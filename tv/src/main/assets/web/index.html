@@ -1,0 +1,824 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12">
+<title>Gesto TV · Etapa 1</title>
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+:root{
+  --bg:#0b0d12; --panel:rgba(18,21,29,.86); --line:#262b38; --text:#eef1f7; --muted:#8b93a7;
+  --off:#6b7280; --on:#22c55e; --num:#f59e0b; --app:#a855f7; --accent:#38bdf8;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+#stage{position:fixed;inset:0}
+video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.mirror{transform:scaleX(-1)}
+#top{position:absolute;top:0;left:0;right:0;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;display:flex;align-items:center;gap:10px;background:linear-gradient(var(--bg),transparent)}
+#mode{white-space:nowrap;display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;background:var(--panel);border:1px solid var(--line);font-weight:700;font-size:14px;letter-spacing:.04em}
+#dot{width:10px;height:10px;border-radius:50%;background:var(--off);box-shadow:0 0 0 0 currentColor}
+#video{opacity:0}
+#link{display:none;padding:6px 10px;border-radius:999px;background:var(--panel);border:1px solid var(--line);font-size:12px;font-weight:700;white-space:nowrap}
+#link.ok{color:var(--on);border-color:var(--on)} #link.bad{color:#f87171;border-color:#f87171}
+#tvbar{display:none;gap:8px;margin-bottom:8px}
+#tvbar button{flex:1;padding:10px 6px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-weight:700;font-size:14px}
+#vol{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);display:none;flex-direction:column;align-items:center;gap:10px;pointer-events:none;z-index:3}
+#volNum{font-size:56px;font-weight:900;text-shadow:0 4px 24px rgba(0,0,0,.7)}
+#volHint{font-size:14px;color:var(--muted);background:var(--panel);padding:6px 12px;border-radius:10px}
+#canvas{touch-action:none}
+#zoomHint{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 12px;font-size:13px;color:var(--muted);display:none;pointer-events:none;white-space:nowrap}
+#fps{margin-left:auto;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.icon-btn{background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:12px;width:40px;height:40px;font-size:18px}
+#hold{position:absolute;top:50%;left:50%;width:160px;height:160px;transform:translate(-50%,-50%);pointer-events:none;opacity:0;transition:opacity .15s}
+#hold circle{fill:none;stroke-width:10}
+#hold .track{stroke:rgba(255,255,255,.15)}
+#hold .bar{stroke:var(--accent);stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%}
+#holdLabel{position:absolute;inset:0;display:grid;place-items:center;font-weight:800;font-size:15px;text-align:center;padding:20px}
+#toast{position:absolute;left:50%;top:22%;transform:translate(-50%,-50%) scale(.9);padding:16px 26px;border-radius:20px;background:var(--panel);border:1px solid var(--line);font-size:26px;font-weight:800;opacity:0;transition:all .2s;white-space:nowrap;text-align:center}
+#toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+#digits{position:absolute;left:50%;top:36%;transform:translateX(-50%);font-size:64px;font-weight:900;letter-spacing:.1em;color:var(--num);text-shadow:0 4px 24px rgba(0,0,0,.6);font-variant-numeric:tabular-nums}
+#apps{position:absolute;left:50%;top:32%;transform:translateX(-50%);display:none;gap:8px;flex-wrap:wrap;justify-content:center;width:min(92vw,520px)}
+#apps div{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 14px;font-weight:700}
+#apps b{color:var(--app);margin-right:6px}
+#bottom{position:absolute;left:0;right:0;bottom:0;padding:12px 16px calc(env(safe-area-inset-bottom) + 12px);background:linear-gradient(transparent,var(--bg) 35%)}
+#readout{font-size:13px;color:var(--muted);margin-bottom:8px;min-height:18px}
+#log{max-height:96px;overflow:auto;font-size:13px;display:flex;flex-direction:column-reverse;gap:4px}
+#log div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 10px}
+#log time{color:var(--muted);margin-right:8px;font-variant-numeric:tabular-nums}
+#start{position:absolute;inset:0;display:grid;place-items:center;background:var(--bg);padding:24px;z-index:5}
+#start .card{max-width:440px;width:100%}
+#start h1{font-size:28px;margin-bottom:6px}
+#start p{color:var(--muted);line-height:1.5;margin-bottom:16px}
+.btn{display:block;width:100%;padding:16px;border-radius:14px;border:0;background:var(--accent);color:#04121b;font-weight:800;font-size:17px}
+#guide{position:absolute;inset:0;z-index:6;background:rgba(11,13,18,.97);overflow:auto;padding:calc(env(safe-area-inset-top) + 16px) 16px 32px;display:none}
+#guide h2{font-size:20px;margin:18px 0 10px}
+#guide .row{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}
+#guide .g{font-size:24px;width:36px;text-align:center;flex:none}
+#guide .row span{color:var(--muted);font-size:14px;display:block;margin-top:2px}
+#err{color:#f87171;margin-top:12px;font-size:14px}
+#toast,#digits,#hold,#holdLabel,#apps{pointer-events:none}
+#tv{position:absolute;top:calc(env(safe-area-inset-top) + 66px);left:50%;transform:translateX(-50%);width:min(94vw,760px);aspect-ratio:16/9;display:none;background:#05070c;border:2px solid #2b3140;border-radius:10px;overflow:hidden;z-index:2;font-size:clamp(9px,2.2vw,15px)}
+#tvApps{position:absolute;left:3%;right:3%;top:5%;height:30%;display:grid;grid-template-columns:repeat(5,1fr);gap:2%}
+#tvApps div,#tvList div{display:grid;place-items:center;border-radius:8px;background:#151a24;border:2px solid transparent;font-weight:700;transition:transform .1s,border-color .1s}
+#tvList{position:absolute;left:3%;right:3%;top:40%;bottom:5%;overflow:hidden;border-radius:8px;background:#0c1017}
+#tvListIn{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:6px}
+#tvList div{height:2.6em;font-weight:600}
+#tv .hov{border-color:var(--accent);transform:scale(1.05)}
+#tv .sel{background:var(--accent);color:#04121b}
+#cursor{position:absolute;left:0;top:0;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;border:3px solid #fff;background:rgba(56,189,248,.55);box-shadow:0 0 12px rgba(56,189,248,.9);pointer-events:none;transition:width .08s,height .08s,margin .08s}
+#cursor.clk{width:12px;height:12px;margin:-6px 0 0 -6px;background:#fff}
+#cursor.drag{background:#f59e0b;border-color:#f59e0b}
+#speed{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 74px + min(94vw,760px) * 9 / 16);display:none;gap:6px;align-items:center;z-index:2;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:6px 8px}
+#speed span{font-size:13px;color:var(--muted);margin:0 6px}
+#speed button{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:#151a24;color:var(--text);font-weight:800;font-size:16px}
+#speed button.on{background:var(--accent);color:#04121b;border-color:var(--accent)}
+#settings{position:absolute;inset:0;z-index:6;background:rgba(11,13,18,.97);overflow:auto;padding:calc(env(safe-area-inset-top) + 16px) 16px 32px;display:none}
+#settings label{display:block;padding:12px 0;border-bottom:1px solid var(--line)}
+#settings label b{display:flex;justify-content:space-between}
+#settings label span{color:var(--muted);font-size:13px;display:block;margin:2px 0 8px}
+#settings input[type=range]{width:100%;accent-color:var(--accent)}
+</style>
+</head>
+<body>
+<div id="stage">
+  <video id="video" class="mirror" playsinline muted></video>
+  <canvas id="canvas" class="mirror"></canvas>
+
+  <div id="top">
+    <div id="mode"><span id="dot"></span><span id="modeText">APAGADO</span></div>
+    <span id="link">TV</span>
+    <span id="fps"></span>
+    <button class="icon-btn" id="btnVoice" title="Voz">🔊</button>
+    <button class="icon-btn" id="btnZoom" title="Zoom (para usar de lejos)" style="width:auto;padding:0 10px;font-weight:800">🔍1x</button>
+    <button class="icon-btn" id="btnFlip" title="Cambiar cámara">🔄</button>
+    <button class="icon-btn" id="btnSettings" title="Ajustes del puntero">⚙️</button>
+    <button class="icon-btn" id="btnGuide" title="Guía">❔</button>
+  </div>
+
+  <svg id="hold" viewBox="0 0 160 160"><circle class="track" cx="80" cy="80" r="66"/><circle class="bar" id="holdBar" cx="80" cy="80" r="66" stroke-dasharray="414.7" stroke-dashoffset="414.7"/></svg>
+  <div id="holdLabel" style="position:absolute;top:50%;left:50%;width:160px;height:160px;transform:translate(-50%,-50%);pointer-events:none"></div>
+
+  <div id="tv"><div id="tvApps"></div><div id="tvList"><div id="tvListIn"></div></div><div id="cursor"></div></div>
+  <div id="speed"></div>
+  <div id="toast"></div>
+  <div id="zoomHint">Arrastrá la imagen con el dedo para encuadrarte</div>
+  <div id="digits"></div>
+  <div id="apps"></div>
+
+  <div id="vol"><div id="volNum">🔊</div><div id="volHint">Subí o bajá la mano · soltá la L para terminar</div></div>
+  <div id="bottom">
+    <div id="tvbar"><button id="bBack">⬅ Atrás</button><button id="bHome">🏠 Inicio</button><button id="bCur">🖱️ Cursor</button></div>
+    <div id="readout">Sin mano a la vista</div>
+    <div id="log"></div>
+  </div>
+
+  <div id="start"><div class="card">
+    <h1>✋ Gesto TV</h1>
+    <p>Etapa 1: la app te mira por la cámara, reconoce tus gestos y te dice en voz alta qué entendió. Todavía no controla el TV: esto es para calibrar los gestos.</p>
+    <p>Apoyá el celular arriba o abajo del TV, mirándote, a 1,5–3 metros.</p>
+    <button class="btn" id="btnStart">Encender cámara</button>
+    <div id="err"></div>
+  </div></div>
+
+  <div id="guide">
+    <button class="icon-btn" id="btnGuideClose" style="float:right">✕</button>
+    <h2>Usar de lejos</h2>
+    <div class="row"><div class="g">🔍</div><div><b>Botón de zoom (1x a 3x)</b><span>Desde el sillón usá 2x o 2,5x. Arrastrá la imagen con el dedo para que tu torso y tus manos queden en el centro. Queda guardado. Tip: la cámara trasera suele ver mejor de lejos.</span></div></div>
+    <h2>Activar / desactivar</h2>
+    <div class="row"><div class="g">✋</div><div><b>Palma abierta quieta 2 segundos</b><span>Activa el control. Repetilo para apagarlo. Se apaga solo tras 10 s sin gestos.</span></div></div>
+    <h2>Con el control activo</h2>
+    <div class="row"><div class="g">🤙</div><div><b>Volumen: hacé una L (pulgar + índice) y sostenela</b><span>Suena un clic: agarraste el volumen. Subí la mano = más, bajala = menos (un paso cada ~5 cm). Soltá la L para terminar.</span></div></div>
+    <div class="row"><div class="g">✊</div><div><b>Puño cerrado (sostenido)</b><span>Silencio. Otro puño: vuelve el sonido. Abrí la mano entre uno y otro.</span></div></div>
+    <div class="row"><div class="g">👉</div><div><b>Mano estirada, barrido rápido a tu derecha</b><span>Canal siguiente. Movimiento amplio y decidido, como pasar una página.</span></div></div>
+    <div class="row"><div class="g">👈</div><div><b>Mano estirada, barrido rápido a tu izquierda</b><span>Canal anterior</span></div></div>
+    <h2>Modo número</h2>
+    <div class="row"><div class="g">🤘</div><div><b>Índice + meñique (cuernitos) sostenido</b><span>Entra al modo número.</span></div></div>
+    <div class="row"><div class="g">🖐</div><div><b>Dedos levantados = dígito</b><span>Sostené 1 s cada dígito. 6 a 9 con las dos manos. Puño = 0. Para repetir un dígito, bajá la mano entre uno y otro.</span></div></div>
+    <div class="row"><div class="g">⏳</div><div><b>Se confirma solo</b><span>A los 2,5 s del último dígito va al canal, como un control remoto. 👍 lo confirma al instante.</span></div></div>
+    <h2>Modo apps</h2>
+    <div class="row"><div class="g">🅰️</div><div><b>"A": índice y medio apuntando hacia abajo</b><span>Entra al modo apps.</span></div></div>
+    <div class="row"><div class="g">☝️</div><div><b>1 Netflix · 2 Flow · 3 Disney+ · 4 YouTube</b><span>Sostené los dedos 1 s. Puño = cancelar.</span></div></div>
+    <h2>Modo puntero (mouse)</h2>
+    <div class="row"><div class="g">☝️</div><div><b>Solo el índice levantado (pulgar escondido), 0,6 s</b><span>Entra al modo puntero (con el control activo).</span></div></div>
+    <div class="row"><div class="g">👆</div><div><b>Mover el índice</b><span>Mueve el cursor. Funciona como un mouse: si sacás la mano y la volvés a poner, el cursor no salta.</span></div></div>
+    <div class="row"><div class="g">👌</div><div><b>Pinza rápida (pulgar toca índice)</b><span>Clic. Dejando los otros dedos relajados, tipo "OK".</span></div></div>
+    <div class="row"><div class="g">🤏</div><div><b>Pinza sostenida</b><span>Quieta = presión larga. Moviéndote = arrastrar.</span></div></div>
+    <div class="row"><div class="g">🤏</div><div><b>Scroll: pinza sostenida + mover la mano</b><span>Como arrastrar con el dedo en un celular: agarrás la lista y la movés.</span></div></div>
+    <div class="row"><div class="g">✌️</div><div><b>Scroll alternativo: índice + medio arriba, mover vertical</b><span>Sin pellizcar.</span></div></div>
+    <div class="row"><div class="g">🐢</div><div><b>Velocidad 1 a 5</b><span>Botones debajo del TV simulado. Queda guardada.</span></div></div>
+    <div class="row"><div class="g">✊</div><div><b>Puño 0,7 s</b><span>Sale del puntero.</span></div></div>
+  </div>
+  <div id="settings">
+    <button class="icon-btn" id="btnSettingsClose" style="float:right">✕</button>
+    <h2 style="margin:6px 0 4px">Ajustes del puntero</h2>
+    <p style="color:var(--muted);font-size:14px">Se guardan en este celular. Probá en modo puntero y ajustá hasta que se sienta natural.</p>
+    <div id="sliders"></div>
+    <button class="btn" id="btnReset" style="margin-top:16px;background:#262b38;color:var(--text)">Volver a valores de fábrica</button>
+  </div>
+</div>
+
+<script type="module">
+import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+/* ===================== CONFIG ===================== */
+const CFG = {
+  volStep: 0.45,            // largos de mano (~5 cm) de recorrido vertical por cada paso de volumen
+  swipeHand: 1.6,           // largos de mano de recorrido horizontal para cambiar de canal
+  numberAutoMs: 2500,       // confirma el canal solo si no marcás otro dígito en este tiempo
+  activateHoldMs: 2000,     // palma quieta para activar/desactivar
+  autoOffMs: 10000,         // apagado automático sin gestos
+  modeTimeoutMs: 8000,      // vuelta desde modo número/apps
+  fistHoldMs: 600,
+  modeEnterHoldMs: 800,
+  digitHoldMs: 1000,
+  confirmHoldMs: 700,
+  swipeWindowMs: 450,
+  swipeDist: 0.17,          // fracción del ancho/alto de imagen
+  stillDist: 0.035,         // movimiento máximo para "quieta"
+  cooldownMs: 900,
+};
+const APPS = { 1: "Netflix", 2: "Flow", 3: "Disney+", 4: "YouTube" };
+
+/* ===================== UI ===================== */
+const $ = id => document.getElementById(id);
+const video = $("video"), canvas = $("canvas"), ctx = canvas.getContext("2d");
+const MODE_UI = {
+  off:    { text: "APAGADO",     color: "var(--off)" },
+  on:     { text: "ACTIVO",      color: "var(--on)" },
+  number: { text: "MODO NÚMERO", color: "var(--num)" },
+  apps:   { text: "MODO APPS",   color: "var(--app)" },
+  pointer:{ text: "MODO PUNTERO",color: "var(--accent)" },
+};
+let voiceOn = true;
+$("btnVoice").onclick = () => { voiceOn = !voiceOn; $("btnVoice").textContent = voiceOn ? "🔊" : "🔇"; };
+$("btnGuide").onclick = () => $("guide").style.display = "block";
+$("btnGuideClose").onclick = () => $("guide").style.display = "none";
+$("apps").innerHTML = Object.entries(APPS).map(([k, v]) => `<div><b>${k}</b>${v}</div>`).join("");
+
+let audioCtx;
+function beep(freq = 880, ms = 90) {
+  try {
+    audioCtx ??= new AudioContext();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.frequency.value = freq; g.gain.value = 0.15;
+    o.connect(g).connect(audioCtx.destination);
+    o.start(); g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + ms / 1000);
+    o.stop(audioCtx.currentTime + ms / 1000);
+  } catch {}
+}
+function say(text) {
+  if (!voiceOn || !("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "es-AR"; u.rate = 1.1;
+  speechSynthesis.speak(u);
+}
+let toastT;
+function toast(text) {
+  const t = $("toast"); t.textContent = text; t.classList.add("show");
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 1400);
+}
+function log(text) {
+  const d = document.createElement("div");
+  d.innerHTML = `<time>${new Date().toLocaleTimeString("es-AR")}</time>${text}`;
+  $("log").prepend(d);
+  while ($("log").children.length > 30) $("log").lastChild.remove();
+}
+function setHold(frac, label) {
+  $("hold").style.opacity = frac > 0 ? 1 : 0;
+  $("holdBar").style.strokeDashoffset = 414.7 * (1 - Math.min(1, frac));
+  $("holdLabel").textContent = frac > 0 ? label : "";
+}
+
+/* ===================== ENLACE CON EL TV =====================
+   La página la sirve la app del TV (https://IP:8443). Ahí abrimos un WebSocket
+   seguro al mismo TV. Si la página se abre desde otro lado, funciona en modo simulador. */
+const TVLINK = (() => {
+  const enabled = location.port === "8443";
+  let ws = null, ok = false, needPin = false, backoff = 500, pingT = null, rtt = null;
+  let mv = { dx: 0, dy: 0 }, flushT = null, scrollAcc = 0;
+  const getPin = () => { try { return localStorage.getItem("gestotv.pin") || ""; } catch { return ""; } };
+  const setPin = v => { try { localStorage.setItem("gestotv.pin", v); } catch {} };
+  function pill(txt, cls) { const el = $("link"); el.style.display = "inline-block"; el.textContent = txt; el.className = cls || ""; }
+  function askPin() {
+    const p = prompt("Escribí el código de 4 números que muestra el TV:", "");
+    if (p) setPin(p.trim());
+    needPin = false;
+  }
+  function connect() {
+    if (!enabled) return;
+    if (needPin || !getPin()) askPin();
+    pill("TV ⏳");
+    ws = new WebSocket(`wss://${location.host}/ws`);
+    ws.onopen = () => ws.send(JSON.stringify({ t: "hello", pin: getPin() }));
+    ws.onmessage = e => {
+      let m; try { m = JSON.parse(e.data); } catch { return; }
+      if (m.t === "ok") {
+        ok = true; backoff = 500; pill("TV ✓", "ok"); log("📺 Conectado al TV (v" + m.version + ")"); say("Conectado al tele");
+        $("tvbar").style.display = "flex"; if (mode === "pointer") $("tv").style.display = "none";
+        clearInterval(pingT); pingT = setInterval(() => send({ t: "ping", id: performance.now() }), 2000);
+      } else if (m.t === "badpin") { needPin = true; pill("Código ✗", "bad"); log("Código incorrecto"); }
+      else if (m.t === "pong") { rtt = Math.round(performance.now() - m.id); pill(`TV ✓ ${rtt} ms`, rtt < 60 ? "ok" : ""); }
+      else if (m.t === "info") { toast(m.msg); log("📺 " + m.msg); say(m.msg); }
+    };
+    ws.onclose = () => {
+      const was = ok; ok = false; clearInterval(pingT);
+      pill("TV ✗ reconectando", "bad"); if (was) log("📺 Se cortó la conexión");
+      setTimeout(connect, needPin ? 100 : backoff); backoff = Math.min(backoff * 2, 5000);
+    };
+    ws.onerror = () => {};
+  }
+  function send(o) { if (ok && ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+  function move(dx, dy) {           // junta los movimientos y manda ~60 por segundo
+    if (!ok) return;
+    mv.dx += dx; mv.dy += dy;
+    if (!flushT) flushT = setTimeout(() => {
+      flushT = null;
+      if (mv.dx || mv.dy) send({ t: "move", dx: Math.round(mv.dx * 10) / 10, dy: Math.round(mv.dy * 10) / 10 });
+      mv = { dx: 0, dy: 0 };
+    }, 16);
+  }
+  function scroll(d, final = false) {  // arrastre vertical: se manda en tramos para que el TV lo tome como deslizar el dedo
+    scrollAcc += d;
+    if (Math.abs(scrollAcc) >= 70 || (final && Math.abs(scrollAcc) > 15)) { send({ t: "scroll", dy: Math.round(scrollAcc) }); scrollAcc = 0; }
+    if (final) scrollAcc = 0;
+  }
+  return { enabled, get ok() { return ok; }, connect, send, move, scroll };
+})();
+function toTv(cmd) {
+  if (["vol_up", "vol_down", "mute", "ch_up", "ch_down", "back", "home"].includes(cmd)) return { t: "key", k: cmd };
+  if (cmd.startsWith("channel:")) return { t: "digits", v: cmd.slice(8) };
+  if (cmd.startsWith("app:")) return { t: "app", name: cmd.slice(4) };
+  if (cmd === "pointer_on") return { t: "cursor", show: true };
+  if (cmd === "pointer_off" || cmd === "deactivate") return { t: "cursor", show: false };
+  return null;
+}
+$("bBack").onclick = () => { TVLINK.send({ t: "key", k: "back" }); beep(); };
+$("bHome").onclick = () => { TVLINK.send({ t: "key", k: "home" }); beep(); };
+$("bCur").onclick = () => { TVLINK.send({ t: "cursor", show: true }); beep(); };
+
+/* ===================== COMANDOS =====================
+   Etapa 1: solo se anuncian. En la etapa 2 esta función
+   va a mandar la orden al TV Samsung / TCL. */
+function sendCommand(cmd, spoken, visual) {
+  beep(cmd === "power_toggle" ? 520 : 880);
+  navigator.vibrate?.(40);
+  toast(visual); say(spoken); log(visual);
+  lastActivity = performance.now();
+  const msg = toTv(cmd); if (msg) TVLINK.send(msg);
+}
+
+/* ===================== GEOMETRÍA ===================== */
+const d2 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const sub3 = (a, b) => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
+const len3 = v => Math.hypot(v.x, v.y, v.z);
+const cos3 = (a, b) => (a.x * b.x + a.y * b.y + a.z * b.z) / (len3(a) * len3(b) + 1e-9);
+function analyzeHand(lm, wl) {
+  const W = lm[0];
+  // Dedo estirado: en 2D (punta lejos de la muñeca) O en 3D (dedo recto, sin importar hacia dónde apunte).
+  // El 3D resuelve la mano de canto o con la palma hacia arriba/abajo, donde el 2D se "aplasta".
+  const fingerUp2D = (tip, pip) => d2(lm[tip], W) > d2(lm[pip], W) * 1.12;
+  const straight3D = (mcp, pip, tip) => wl ? cos3(sub3(wl[pip], wl[mcp]), sub3(wl[tip], wl[pip])) > 0.55 : false;
+  const fingerUp = (mcp, pip, tip) => fingerUp2D(tip, pip) || straight3D(mcp, pip, tip);
+  const idx = fingerUp(5, 6, 8), mid = fingerUp(9, 10, 12), rng = fingerUp(13, 14, 16), pky = fingerUp(17, 18, 20);
+  const thumb2D = d2(lm[4], lm[9]) > d2(lm[2], lm[9]) * 1.25 && d2(lm[4], W) > d2(lm[3], W);
+  const thumb3D = wl ? len3(sub3(wl[4], wl[5])) / (len3(sub3(wl[9], wl[0])) + 1e-9) > 0.62 && cos3(sub3(wl[3], wl[2]), sub3(wl[4], wl[3])) > 0.7 : false;
+  const thumb = thumb2D || thumb3D;
+  // L: pulgar bien separado y en ángulo (> 50°) respecto del índice
+  let lAngle;
+  if (wl) lAngle = Math.acos(Math.max(-1, Math.min(1, cos3(sub3(wl[4], wl[2]), sub3(wl[8], wl[5]))))) * 180 / Math.PI;
+  else { const a = { x: lm[4].x - lm[2].x, y: lm[4].y - lm[2].y }, b = { x: lm[8].x - lm[5].x, y: lm[8].y - lm[5].y };
+         lAngle = Math.abs(Math.atan2(a.x * b.y - a.y * b.x, a.x * b.x + a.y * b.y)) * 180 / Math.PI; }
+  const isL = thumb && lAngle > 50 && d2(lm[4], lm[5]) > d2(lm[0], lm[5]) * 0.5;
+  const ext = [thumb, idx, mid, rng, pky];
+  const nonThumb = [idx, mid, rng, pky].filter(Boolean).length;
+  const count = nonThumb + (thumb ? 1 : 0);
+  const size = Math.max(d2(lm[0], lm[9]), d2(lm[5], lm[17]) * 1.3); // escala: no se achica con la mano de canto
+  const center = { x: (lm[0].x + lm[5].x + lm[17].x) / 3, y: (lm[0].y + lm[5].y + lm[17].y) / 3 };
+
+  let pose = "other";
+  const minOtherY = Math.min(...[5, 6, 8, 9, 12, 13, 16, 17, 20].map(i => lm[i].y));
+  if (thumb && nonThumb === 0 && lm[4].y < minOtherY - size * 0.1) pose = "thumbup";
+  else if (nonThumb >= 4 && thumb) pose = "open";
+  else if (nonThumb >= 4) pose = "flat";               // mano estirada con el pulgar pegado (típico en palma arriba/abajo)
+  else if (nonThumb === 0 && !thumb) pose = "fist";
+  else if (idx && mid && !rng && !pky && lm[8].y > lm[5].y && lm[12].y > lm[9].y - size * 0.1) pose = "A";
+  else if (idx && pky && !mid && !rng) pose = "horns";
+  else if (idx && !mid && !rng && !pky && isL) pose = "L";
+  else if (idx && !mid && !rng && !pky) pose = "point";
+  else if (idx && mid && !rng && !pky) pose = "two";
+  else if (nonThumb === 0 && thumb) pose = "fist"; // pulgar suelto en puño
+
+  // orientación de la palma (informativa): normal del plano de la palma
+  const v1 = { x: lm[5].x - W.x, y: lm[5].y - W.y, z: lm[5].z - W.z };
+  const v2 = { x: lm[17].x - W.x, y: lm[17].y - W.y, z: lm[17].z - W.z };
+  const ny = v1.z * v2.x - v1.x * v2.z;
+  const idxCurled = d2(lm[8], W) < d2(lm[5], W) * 1.05; // punta del índice metida en la palma (puño real, no pinza)
+  return { ext, count, nonThumb, pose, center, size, ny, idxCurled, lm };
+}
+
+/* ===================== AJUSTES DEL PUNTERO ===================== */
+const SPEEDS = [4.5, 3.4, 2.5, 1.8, 1.3]; // largos de mano para cruzar la pantalla, nivel 1 (lento) a 5 (rápido)
+const DEFAULTS = { zoom: 1, panX: 0, panY: 0, level: 3, accel: 0.8, minCut: 1.2, beta: 0.3, dead: 0.01, pinch: 0.30, longMs: 600 };
+const SLIDERS = [
+  ["accel",  "Aceleración",         "Movimiento rápido = el cursor viaja más lejos (como un mouse). 0 = lineal.",               0, 2, 0.05],
+  ["minCut", "Suavizado en reposo", "Más bajo = cursor más quieto cuando apuntás (menos temblor), pero más lento en reaccionar.", 0.2, 5, 0.1],
+  ["beta",   "Respuesta al moverte","Más alto = menos retraso en movimientos rápidos.",                                          0, 2, 0.05],
+  ["dead",   "Zona muerta",         "Ignora micromovimientos menores a esto (en largos de mano).",                              0, 0.06, 0.002],
+  ["pinch",  "Umbral de pinza",     "Distancia pulgar-índice (relativa a la mano) que cuenta como clic. Mirá el valor 'pinza' abajo.", 0.12, 0.5, 0.01],
+  ["longMs", "Presión larga (ms)",  "Cuánto sostener la pinza para presión larga.",                                            300, 1500, 50],
+];
+let S = { ...DEFAULTS };
+try { Object.assign(S, JSON.parse(localStorage.getItem("gestotv.ptr") || "{}")); } catch {}
+function saveS() { try { localStorage.setItem("gestotv.ptr", JSON.stringify(S)); } catch {} }
+function renderSliders() {
+  $("sliders").innerHTML = SLIDERS.map(([k, t, d, mn, mx, st]) =>
+    `<label><b>${t}<output id="o_${k}">${S[k]}</output></b><span>${d}</span><input type="range" id="r_${k}" min="${mn}" max="${mx}" step="${st}" value="${S[k]}"></label>`).join("");
+  for (const [k] of SLIDERS) $("r_" + k).oninput = e => { S[k] = +e.target.value; $("o_" + k).textContent = S[k]; saveS(); };
+}
+renderSliders();
+function renderSpeed() {
+  $("speed").innerHTML = "<span>Velocidad</span>" + SPEEDS.map((_, i) => `<button data-l="${i + 1}" class="${S.level === i + 1 ? "on" : ""}">${i + 1}</button>`).join("");
+  $("speed").querySelectorAll("button").forEach(b => b.onclick = () => { S.level = +b.dataset.l; saveS(); renderSpeed(); say("Velocidad " + S.level); });
+}
+renderSpeed();
+$("btnSettings").onclick = () => $("settings").style.display = "block";
+$("btnSettingsClose").onclick = () => $("settings").style.display = "none";
+$("btnReset").onclick = () => { S = { ...DEFAULTS }; saveS(); renderSliders(); renderSpeed(); };
+
+/* ===================== FILTRO ONE EURO =====================
+   Suaviza fuerte cuando la mano está casi quieta (mata el temblor)
+   y casi nada cuando se mueve rápido (sin retraso). */
+class OneEuro {
+  constructor() { this.reset(); }
+  reset() { this.x = null; this.dx = 0; this.t = null; }
+  filter(v, t, minCut, beta) {
+    const a = (c, dt) => { const r = 2 * Math.PI * c * dt; return r / (r + 1); };
+    if (this.t === null) { this.t = t; this.x = v; this.dx = 0; return v; }
+    const dt = Math.max(1e-3, t - this.t); this.t = t;
+    const d = (v - this.x) / dt;
+    this.dx += a(1.0, dt) * (d - this.dx);
+    this.x += a(minCut + beta * Math.abs(this.dx), dt) * (v - this.x);
+    return this.x;
+  }
+}
+
+/* ===================== TV (simulador en pantalla) =====================
+   Misma interfaz que va a tener el driver real en la etapa 2:
+   Samsung: move -> {"Cmd":"Move","Position":{x,y,Time},"TypeOfRemote":"ProcessMouseDevice"}
+            click -> {"Cmd":"LeftClick","TypeOfRemote":"ProcessMouseDevice"}
+   TCL/Google TV: app compañera en el TV (cursor por accesibilidad). */
+const TV_W = 1920, TV_H = 1080;
+$("tvApps").innerHTML = ["Netflix", "Flow", "Disney+", "YouTube", "Ajustes"].map(n => `<div data-t="${n}">${n}</div>`).join("");
+$("tvListIn").innerHTML = Array.from({ length: 36 }, (_, i) => `<div data-t="Canal ${i + 1}">Canal ${i + 1}</div>`).join("");
+const tv = {
+  x: TV_W / 2, y: TV_H / 2, hover: null, hist: [],
+  setPos(x, y) {
+    this.x = Math.max(0, Math.min(TV_W, x)); this.y = Math.max(0, Math.min(TV_H, y));
+    const r = $("tv").getBoundingClientRect();
+    const cx = this.x / TV_W * r.width, cy = this.y / TV_H * r.height;
+    $("cursor").style.transform = `translate(${cx}px,${cy}px)`;
+    const el = document.elementFromPoint(r.left + cx, r.top + cy)?.closest?.("#tv [data-t]") || null;
+    if (el !== this.hover) { this.hover?.classList.remove("hov"); el?.classList.add("hov"); this.hover = el; }
+    const now = performance.now();
+    this.hist.push({ t: now, x: this.x, y: this.y });
+    while (this.hist.length && now - this.hist[0].t > 400) this.hist.shift();
+  },
+  move(dx, dy) { this.setPos(this.x + dx, this.y + dy); if (!PTR.dragging) TVLINK.move(dx, dy); },
+  posAgo(ms) { const t = performance.now() - ms; let p = null; for (const h of this.hist) { if (h.t <= t) p = h; } return p; },
+  flash(cls, ms) { $("cursor").classList.add(cls); setTimeout(() => $("cursor").classList.remove(cls), ms); },
+  click() {
+    this.flash("clk", 160); beep(1000, 40); navigator.vibrate?.(25);
+    const el = this.hover, n = el?.dataset.t;
+    if (el) { el.classList.add("sel"); setTimeout(() => el.classList.remove("sel"), 350); say(n); }
+    log("👆 Clic" + (n ? ": " + n : "")); TVLINK.send({ t: "click" });
+  },
+  longPress() { TVLINK.send({ t: "long" }); beep(600, 120); const n = this.hover?.dataset.t; say("Presión larga"); log("🤏 Presión larga" + (n ? ": " + n : "")); },
+  pressStart() { TVLINK.send({ t: "drag", on: true }); $("cursor").classList.add("drag"); beep(700, 50); log("✊ Arrastrar"); },
+  release() { TVLINK.scroll(0, true); TVLINK.send({ t: "drag", on: false }); $("cursor").classList.remove("drag"); log("Soltar"); },
+  scroll(dyPx) { const r = $("tv").getBoundingClientRect(); $("tvList").scrollTop += dyPx * r.height / TV_H; TVLINK.scroll(-dyPx); },
+};
+
+/* ===================== MOTOR DEL PUNTERO ===================== */
+const PTR = { fx: new OneEuro(), fy: new OneEuro(), hs: null, prev: null, lastSeen: 0,
+              pinched: false, pinchT: 0, pinchAnchor: null, dragging: false, ratio: 0, anchorPrev: null };
+function pointerReset() { PTR.fx.reset(); PTR.fy.reset(); PTR.prev = null; PTR.anchorPrev = null; }
+function pointerStep(h, now) {
+  const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
+  const P = i => ({ x: h.lm[i].x * vw, y: h.lm[i].y * vh });
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const w = P(0), tip = P(8), thumb = P(4);
+  const sizePx = dist(w, P(9));
+  PTR.hs = PTR.hs === null ? sizePx : PTR.hs * 0.92 + sizePx * 0.08;   // tamaño de mano suavizado
+  if (now - PTR.lastSeen > 200) pointerReset();                          // mano reaparece: sin saltos (como levantar el mouse)
+  PTR.lastSeen = now;
+
+  // posición del índice en "largos de mano": no depende de la distancia al TV
+  const t = now / 1000;
+  // ancla estable (centro de la palma): no se mueve al cerrar la pinza
+  const palm = { x: (w.x + P(5).x + P(17).x) / 3 / PTR.hs, y: (w.y + P(5).y + P(17).y) / 3 / PTR.hs };
+  const ux = PTR.fx.filter(tip.x / PTR.hs, t, S.minCut, S.beta);
+  const uy = PTR.fy.filter(tip.y / PTR.hs, t, S.minCut, S.beta);
+
+  // ---- pinza con histéresis
+  PTR.ratio = dist(thumb, tip) / sizePx;
+  const idxOut = dist(tip, w) > dist(P(5), w) * 1.0;
+  if (!PTR.pinched && PTR.ratio < S.pinch && idxOut && h.pose !== "two") {
+    PTR.pinched = true; PTR.pinchT = now; PTR.pinchAnchor = palm; PTR.dragging = false;
+    const back = tv.posAgo(120); if (back) tv.setPos(back.x, back.y);   // deshace el corrimiento al cerrar la pinza
+    beep(1400, 25);
+  } else if (PTR.pinched && PTR.ratio > S.pinch * 1.45) {
+    PTR.pinched = false;
+    if (PTR.dragging) tv.release();
+    else if (now - PTR.pinchT < S.longMs) tv.click();
+    else tv.longPress();
+    PTR.dragging = false;
+  }
+
+  // ---- movimiento relativo con aceleración
+  if (PTR.prev) {
+    let dx = -(ux - PTR.prev.x), dy = uy - PTR.prev.y;                  // la cámara te mira: tu derecha es la izquierda de la imagen
+    const dt = Math.max(0.001, (now - PTR.prev.t) / 1000);
+    const mag = Math.hypot(dx, dy);
+    const k = mag > S.dead ? (mag - S.dead) / mag : 0;                  // zona muerta suave
+    dx *= k; dy *= k;
+    const speed = mag / dt;                                              // largos de mano por segundo
+    const gain = (TV_W / SPEEDS[S.level - 1]) * (1 + S.accel * Math.min(speed, 6) / 3);
+    if (h.pose === "two" && !PTR.pinched) tv.scroll(dy * gain);
+    else if (PTR.pinched) {
+      // durante la pinza el cursor sigue a la PALMA (la punta del índice se corre al pellizcar)
+      if (!PTR.dragging && Math.hypot(palm.x - PTR.pinchAnchor.x, palm.y - PTR.pinchAnchor.y) > 0.35) { PTR.dragging = true; tv.pressStart(); }
+      if (PTR.dragging && PTR.anchorPrev) { const ddy = (palm.y - PTR.anchorPrev.y) * gain; tv.move(-(palm.x - PTR.anchorPrev.x) * gain, ddy); tv.scroll(-ddy); }
+    } else tv.move(dx * gain, dy * gain);
+  }
+  PTR.prev = { x: ux, y: uy, t: now };
+  PTR.anchorPrev = palm;
+}
+
+/* ===================== MÁQUINA DE ESTADOS ===================== */
+let mode = "off", modeSince = 0, lastActivity = 0, cooldownUntil = 0;
+let hold = { key: null, since: 0 };
+let trail = [];       // historial del centro de la mano para swipes
+let digits = "", digitArmed = true, lastDigitKey = null;
+let palmLatch = false, fistLatch = false, muted = false;
+let motPrev = null, motScale = null, volAcc = 0, volLastT = 0, volSpokenT = 0, swipeBuf = [];
+let lastDigitAt = 0, volGrab = false, volNet = 0;
+function showVol() { $("vol").style.display = "flex"; updateVol(); }
+function updateVol() { $("volNum").textContent = volNet === 0 ? "🔊 ±0" : (volNet > 0 ? "🔊 +" + volNet : "🔉 " + volNet); }
+function endVolGrab() {
+  volGrab = false; $("vol").style.display = "none"; clearHold();
+  if (volNet !== 0) { say("Volumen " + (volNet > 0 ? "más " : "menos ") + Math.abs(volNet)); log(`🔊 Volumen ${volNet > 0 ? "+" : ""}${volNet}`); }
+  volNet = 0;
+}
+function volumeStep(up, now) {
+  muted = false; volNet += up ? 1 : -1; updateVol();
+  beep(up ? 1100 : 700, 45); navigator.vibrate?.(15);
+  TVLINK.send({ t: "key", k: up ? "vol_up" : "vol_down" });
+  lastActivity = now;
+} // tras activar/apagar, hay que bajar la palma antes de repetir
+
+function setMode(m) {
+  mode = m; modeSince = performance.now(); lastActivity = modeSince;
+  const ui = MODE_UI[m];
+  $("modeText").textContent = ui.text; $("dot").style.background = ui.color;
+  $("apps").style.display = m === "apps" ? "flex" : "none";
+  $("tv").style.display = m === "pointer" && !TVLINK.ok ? "block" : "none";
+  $("speed").style.display = m === "pointer" ? "flex" : "none";
+  if (m === "pointer") { tv.setPos(TV_W / 2, TV_H / 2); pointerReset(); PTR.pinched = false; PTR.dragging = false; }
+  if (m !== "number") digits = "";
+  $("digits").textContent = m === "number" ? (digits || "_") : "";
+  hold = { key: null, since: 0 }; trail = [];
+}
+
+function holdFor(key, ms, label, now) {
+  if (hold.key !== key) { hold = { key, since: now }; }
+  const frac = (now - hold.since) / ms;
+  setHold(frac, label);
+  if (frac >= 1) { hold = { key, since: Infinity }; setHold(0); return true; }
+  return false;
+}
+function clearHold() { if (hold.key) { hold = { key: null, since: 0 }; setHold(0); } }
+
+function isStill() {
+  if (trail.length < 5) return false;
+  const xs = trail.map(p => p.x), ys = trail.map(p => p.y);
+  return Math.max(...xs) - Math.min(...xs) < CFG.stillDist && Math.max(...ys) - Math.min(...ys) < CFG.stillDist;
+}
+function detectSwipe(now) {
+  const recent = trail.filter(p => now - p.t < CFG.swipeWindowMs);
+  if (recent.length < 4) return null;
+  const a = recent[0], b = recent[recent.length - 1];
+  const dx = (1 - b.x) - (1 - a.x); // espejado: + = hacia TU derecha
+  const dy = b.y - a.y;             // + = hacia abajo
+  if (Math.abs(dx) > CFG.swipeDist && Math.abs(dx) > Math.abs(dy) * 1.5) return dx > 0 ? "right" : "left";
+  if (Math.abs(dy) > CFG.swipeDist * 0.8 && Math.abs(dy) > Math.abs(dx) * 1.5) return dy < 0 ? "up" : "down";
+  return null;
+}
+
+function step(hands, now) {
+  // ---- timeouts
+  if (mode === "on" && now - lastActivity > CFG.autoOffMs) { setMode("off"); say("Control apagado"); log("Apagado automático"); }
+  if (mode === "pointer" && now - lastActivity > 15000) { setMode("on"); say("Puntero apagado"); log("Puntero apagado por tiempo"); }
+  if (mode === "number" && digits && now - lastDigitAt > CFG.numberAutoMs) { const ch = digits; setMode("on"); cooldownUntil = now + 1000; sendCommand("channel:" + ch, "Canal " + ch, "📺 Canal " + ch); return; }
+  if (mode === "number" && digits) { const left = Math.max(0, CFG.numberAutoMs - (now - lastDigitAt)); $("digits").textContent = digits + " ⏳" + Math.ceil(left / 1000); }
+  if ((mode === "number" || mode === "apps") && now - lastActivity > CFG.modeTimeoutMs && !(mode === "number" && digits)) { setMode("on"); say("Cancelado"); log("Modo cancelado por tiempo"); }
+
+  if (!hands.length && volGrab) endVolGrab();
+  if (!hands.length) { clearHold(); trail = []; digitArmed = true; lastDigitKey = null; palmLatch = false; fistLatch = false; motPrev = null; volAcc = 0; swipeBuf = []; return; }
+
+  const main = hands.reduce((a, b) => (b.size > a.size ? b : a)); // la mano más cercana
+  trail.push({ x: main.center.x, y: main.center.y, t: now });
+  trail = trail.filter(p => now - p.t < 700);
+  if (mode !== "off") lastActivity = now;
+  const inCooldown = now < cooldownUntil;
+
+  // ---- palma quieta 2 s: activar / desactivar (desde cualquier modo)
+  if (main.pose !== "open") palmLatch = false;
+  if (main.pose !== "fist") fistLatch = false;
+  if (main.pose === "open" && palmLatch) return;
+  if (main.pose === "open" && hands.length === 1 && isStill()) {
+    if (holdFor("palm", CFG.activateHoldMs, mode === "off" ? "Activando…" : "Apagando…", now)) {
+      if (mode === "off") { setMode("on"); sendCommand("activate", "Control activado", "✋ Control activado"); }
+      else { setMode("off"); sendCommand("deactivate", "Control apagado", "✋ Control apagado"); }
+      cooldownUntil = now + 1500; palmLatch = true;
+    }
+    return;
+  }
+  if (mode === "off") { clearHold(); return; }
+
+  // ---- modo ACTIVO
+  if (mode === "on") {
+    // movimiento de la palma medido en "largos de mano" (igual a 1 m que a 3 m)
+    const AR = (video.videoWidth || 4) / (video.videoHeight || 3);
+    const P = i => ({ x: main.lm[i].x * AR, y: main.lm[i].y });
+    const sc = Math.max(d2(P(0), P(9)), d2(P(5), P(17)) * 1.3); motScale = motScale === null ? sc : motScale * 0.85 + sc * 0.15;
+    let mdx = 0, mdy = 0, mdt = 0.033;
+    if (motPrev) { mdx = -(main.center.x - motPrev.x) * AR / motScale; mdy = (main.center.y - motPrev.y) / motScale; mdt = Math.max(0.001, (now - motPrev.t) / 1000); }
+    motPrev = { x: main.center.x, y: main.center.y, t: now };
+    const flatish = main.nonThumb >= 3;   // mano estirada en cualquier orientación
+
+    // VOLUMEN con la L: sostenerla 0,4 s para "agarrar" el volumen, después subir o bajar la mano.
+    if (volGrab && main.pose !== "L" && now - volLastT > 350) endVolGrab();
+    if (main.pose === "L" || volGrab) {
+      if (!volGrab) {
+        if (!inCooldown && holdFor("L", 400, "Volumen", now)) { volGrab = true; volAcc = 0; volNet = 0; volLastT = now; beep(900, 40); navigator.vibrate?.(30); showVol(); }
+        return;
+      }
+      if (main.pose === "L") {
+        volLastT = now; volAcc += mdy;
+        while (volAcc <= -CFG.volStep) { volAcc += CFG.volStep; volumeStep(true, now); }
+        while (volAcc >= CFG.volStep) { volAcc -= CFG.volStep; volumeStep(false, now); }
+      }
+      return;
+    }
+
+    if (!inCooldown && flatish) {
+      // CANAL: barrido horizontal rápido
+      swipeBuf.push({ dx: mdx, dy: mdy, t: now });
+      swipeBuf = swipeBuf.filter(p => now - p.t < 500);
+      const sx = swipeBuf.reduce((a, p) => a + p.dx, 0), sy = swipeBuf.reduce((a, p) => a + p.dy, 0);
+      if (Math.abs(sx) > CFG.swipeHand && Math.abs(sx) > Math.abs(sy) * 2) {
+        clearHold(); swipeBuf = []; volAcc = 0; cooldownUntil = now + 800;
+        return sx > 0 ? sendCommand("ch_up", "Canal siguiente", "📺 Canal +") : sendCommand("ch_down", "Canal anterior", "📺 Canal −");
+      }
+    } else { swipeBuf = []; }
+    if (inCooldown) return;
+
+    // MUTE: el puño alterna silencio / sonido. Hay que abrir la mano antes de repetir.
+    if (main.pose === "fist" && !fistLatch) {
+      if (holdFor("fist", CFG.fistHoldMs, muted ? "Sonido" : "Silencio", now)) {
+        muted = !muted; fistLatch = true; cooldownUntil = now + 600;
+        muted ? sendCommand("mute", "Silencio", "🔇 Silencio") : sendCommand("mute", "Sonido activado", "🔈 Sonido activado");
+      }
+      return;
+    }
+    if (main.pose === "fist") return;
+    if (main.pose === "horns") {
+      if (holdFor("horns", CFG.modeEnterHoldMs, "Modo número", now)) { setMode("number"); cooldownUntil = now + 900; digitArmed = false; sendCommand("mode_number", "Modo número", "🤘 Modo número"); }
+      return;
+    }
+    if (main.pose === "point" && Math.hypot(mdx, mdy) / mdt < 1.5) {
+      if (holdFor("point", 600, "Modo puntero", now)) { setMode("pointer"); cooldownUntil = now + 400; sendCommand("pointer_on", "Modo puntero", "🖱️ Modo puntero"); }
+      return;
+    }
+    if (main.pose === "point") return;
+    if (main.pose === "A") {
+      if (holdFor("A", 600, "Modo apps", now)) { setMode("apps"); cooldownUntil = now + 900; digitArmed = false; sendCommand("mode_apps", "Modo apps. Elegí con los dedos", "🅰️ Modo apps"); }
+      return;
+    }
+    clearHold();
+    return;
+  }
+
+  // ---- modo PUNTERO
+  if (mode === "pointer") {
+    if (main.pose === "fist" && main.idxCurled && !PTR.pinched) {
+      if (holdFor("exitp", 700, "Salir del puntero", now)) { setMode("on"); cooldownUntil = now + 800; sendCommand("pointer_off", "Puntero apagado", "🖱️ Puntero apagado"); }
+      return;
+    }
+    clearHold();
+    pointerStep(main, now);
+    return;
+  }
+
+  // ---- conteo de dedos (una o dos manos)
+  const total = hands.reduce((s, h) => s + h.count, 0);
+  const allFist = hands.every(h => h.pose === "fist");
+  const anyThumbUp = hands.length === 1 && main.pose === "thumbup";
+
+  // ---- modo NÚMERO
+  if (mode === "number") {
+    if (inCooldown) return;
+    if (anyThumbUp) {
+      if (holdFor("confirm", 500, "Confirmar", now)) {
+        if (digits) { const ch = digits; setMode("on"); cooldownUntil = now + 1200; sendCommand("channel:" + ch, "Canal " + ch, "📺 Canal " + ch); }
+        else { setMode("on"); say("Sin número"); }
+      }
+      return;
+    }
+    const value = allFist ? 0 : total;
+    const key = "d" + value;
+    if (value > 9) { clearHold(); return; }
+    if (!digitArmed && key === lastDigitKey) { clearHold(); return; }
+    if (lastDigitKey && key !== lastDigitKey) digitArmed = true;
+    if (holdFor(key, CFG.digitHoldMs, "Dígito " + value, now)) {
+      digits += value; lastDigitKey = key; digitArmed = false; lastDigitAt = now;
+      $("digits").textContent = digits; beep(1200, 60); say(String(value)); log("Dígito " + value);
+      if (digits.length >= 4) { const ch = digits; setMode("on"); sendCommand("channel:" + ch, "Canal " + ch, "📺 Canal " + ch); }
+    }
+    return;
+  }
+
+  // ---- modo APPS
+  if (mode === "apps") {
+    if (inCooldown) return;
+    if (allFist) {
+      if (holdFor("cancel", CFG.fistHoldMs, "Cancelar", now)) { setMode("on"); say("Cancelado"); log("Modo apps cancelado"); }
+      return;
+    }
+    if (!digitArmed && ("a" + total) === lastDigitKey) { clearHold(); return; }
+    if (APPS[total]) {
+      if (holdFor("a" + total, CFG.digitHoldMs, APPS[total], now)) {
+        const name = APPS[total]; setMode("on"); cooldownUntil = now + 1200;
+        sendCommand("app:" + name, "Abriendo " + name, "▶️ " + name);
+      }
+    } else clearHold();
+  }
+}
+
+/* ===================== DIBUJO ===================== */
+const LINKS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+function draw(results) {
+  if (canvas.width !== src.width || canvas.height !== src.height) { canvas.width = src.width; canvas.height = src.height; }
+  ctx.drawImage(src, 0, 0);
+  const color = getComputedStyle($("dot")).backgroundColor;
+  for (const lm of results.landmarks) {
+    ctx.strokeStyle = color; ctx.lineWidth = Math.max(3, canvas.width / 220);
+    for (const [a, b] of LINKS) { ctx.beginPath(); ctx.moveTo(lm[a].x * canvas.width, lm[a].y * canvas.height); ctx.lineTo(lm[b].x * canvas.width, lm[b].y * canvas.height); ctx.stroke(); }
+    ctx.fillStyle = "#fff";
+    for (const p of lm) { ctx.beginPath(); ctx.arc(p.x * canvas.width, p.y * canvas.height, ctx.lineWidth * 1.2, 0, 7); ctx.fill(); }
+  }
+}
+
+/* ===================== ARRANQUE ===================== */
+const POSE_TXT = { L: "L", flat: "mano estirada", open: "mano abierta", fist: "puño", thumbup: "pulgar arriba", A: "A", horns: "cuernitos", point: "índice", two: "dos dedos", other: "—" };
+let landmarker, facing = "user", stream, lastVideoTime = -1, frames = 0, fpsT = performance.now();
+
+/* ===================== ZOOM =====================
+   La IA achica el cuadro completo para buscar la mano: de lejos la mano queda diminuta.
+   Recortamos (o usamos el zoom de la cámara) para que la zona donde estás ocupe más lugar. */
+const ZOOMS = [1, 1.5, 2, 2.5, 3];
+const src = document.createElement("canvas"), sctx = src.getContext("2d");
+let nativeZoom = null;
+async function applyZoom(announce = true) {
+  $("btnZoom").textContent = "🔍" + S.zoom + "x";
+  if (nativeZoom) {
+    const z = Math.min(nativeZoom.max, Math.max(nativeZoom.min, S.zoom));
+    try { await stream.getVideoTracks()[0].applyConstraints({ advanced: [{ zoom: z }] }); } catch { nativeZoom = null; }
+  }
+  if (announce) { say("Zoom " + String(S.zoom).replace(".", " coma ")); log("🔍 Zoom " + S.zoom + "x" + (nativeZoom ? " (cámara)" : " (recorte)")); }
+  $("zoomHint").style.display = !nativeZoom && S.zoom > 1 ? "block" : "none";
+  clearTimeout(applyZoom.t); applyZoom.t = setTimeout(() => $("zoomHint").style.display = "none", 4000);
+}
+function cropRect() {
+  const vw = video.videoWidth, vh = video.videoHeight, z = nativeZoom ? 1 : S.zoom;
+  const cw = Math.round(vw / z), ch = Math.round(vh / z), mx = (vw - cw) / 2, my = (vh - ch) / 2;
+  return { sx: Math.round(mx + S.panX * mx), sy: Math.round(my + S.panY * my), cw, ch };
+}
+$("btnZoom").onclick = () => { S.zoom = ZOOMS[(ZOOMS.indexOf(S.zoom) + 1) % ZOOMS.length]; if (S.zoom === 1) { S.panX = 0; S.panY = 0; } saveS(); applyZoom(); };
+let panStart = null;
+canvas.addEventListener("pointerdown", e => { if (nativeZoom || S.zoom === 1) return; panStart = { x: e.clientX, y: e.clientY, px: S.panX, py: S.panY }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener("pointermove", e => {
+  if (!panStart) return;
+  const k = 2.2 / Math.min(innerWidth, innerHeight), sgn = facing === "user" ? 1 : -1;  // la imagen sigue al dedo
+  S.panX = Math.max(-1, Math.min(1, panStart.px + sgn * (e.clientX - panStart.x) * k));
+  S.panY = Math.max(-1, Math.min(1, panStart.py - (e.clientY - panStart.y) * k));
+});
+canvas.addEventListener("pointerup", () => { if (panStart) { panStart = null; saveS(); } });
+
+async function startCamera() {
+  stream?.getTracks().forEach(t => t.stop());
+  stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+  video.srcObject = stream; await video.play();
+  const caps = stream.getVideoTracks()[0].getCapabilities?.() || {};
+  nativeZoom = caps.zoom && caps.zoom.max >= 1.5 ? caps.zoom : null;   // zoom del sensor: más nitidez que recortar
+  await applyZoom(false);
+  const mirror = facing === "user";
+  video.classList.toggle("mirror", mirror); canvas.classList.toggle("mirror", mirror);
+}
+
+async function init() {
+  $("btnStart").disabled = true; $("btnStart").textContent = "Cargando reconocimiento…";
+  try {
+    beep(660, 40); // desbloquea el audio
+    if ("speechSynthesis" in window) speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+    const files = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+    const opts = (delegate) => ({
+      baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", delegate },
+      runningMode: "VIDEO", numHands: 2,
+      minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+    });
+    try { landmarker = await HandLandmarker.createFromOptions(files, opts("GPU")); }
+    catch { landmarker = await HandLandmarker.createFromOptions(files, opts("CPU")); }
+    await startCamera();
+    try { await navigator.wakeLock?.request("screen"); } catch {}
+    $("start").style.display = "none";
+    setMode("off");
+    say("Listo. Mostrá la palma dos segundos para activar.");
+    TVLINK.connect();
+    requestAnimationFrame(loop);
+  } catch (e) {
+    $("err").textContent = "No pude iniciar: " + (e.message || e) + ". Revisá el permiso de cámara.";
+    $("btnStart").disabled = false; $("btnStart").textContent = "Reintentar";
+  }
+}
+
+function loop() {
+  const now = performance.now();
+  if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+    lastVideoTime = video.currentTime;
+    const c = cropRect();
+    if (src.width !== c.cw || src.height !== c.ch) { src.width = c.cw; src.height = c.ch; }
+    sctx.drawImage(video, c.sx, c.sy, c.cw, c.ch, 0, 0, c.cw, c.ch);
+    const res = landmarker.detectForVideo(src, now);
+    const hands = res.landmarks.map((lm, i) => analyzeHand(lm, res.worldLandmarks?.[i]));
+    draw(res);
+    step(hands, now);
+    $("readout").textContent = hands.length
+      ? hands.map((h, i) => `Mano ${i + 1}: ${POSE_TXT[h.pose]} · ${h.count} dedos`).join("   |   ")
+      : "Sin mano a la vista";
+    if (mode === "pointer" && hands.length) $("readout").textContent += `   |   pinza ${PTR.ratio.toFixed(2)} (clic < ${S.pinch})${PTR.pinched ? " ●" : ""}`;
+    frames++;
+    if (now - fpsT > 1000) { $("fps").textContent = frames + " fps"; frames = 0; fpsT = now; }
+  }
+  requestAnimationFrame(loop);
+}
+
+$("btnStart").onclick = init;
+$("btnFlip").onclick = async () => { facing = facing === "user" ? "environment" : "user"; try { await startCamera(); } catch (e) { log("No pude cambiar de cámara"); } };
+document.addEventListener("visibilitychange", async () => { if (document.visibilityState === "visible") try { await navigator.wakeLock?.request("screen"); } catch {} });
+</script>
+</body>
+</html>
