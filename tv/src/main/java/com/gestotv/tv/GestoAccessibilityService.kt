@@ -61,20 +61,30 @@ class GestoAccessibilityService : AccessibilityService() {
     }
 
     private fun startServer() {
+        if (server != null) return
         Thread {
-            try {
-                val s = GestoServer(this, Status.PORT)
-                s.makeSecure(Tls.serverSocketFactory(this), null)
-                s.start(0, false)
-                server = s
-                Status.serverRunning = true
-                Status.serverError = null
-                Log.i(TAG, "Servidor en ${Status.url()}")
-            } catch (e: Exception) {
-                Status.serverRunning = false
-                Status.serverError = e.toString()
-                Log.e(TAG, "No pude iniciar el servidor", e)
+            val factory = try { Tls.serverSocketFactory(this) } catch (e: Exception) {
+                Status.serverError = "Certificado: $e"; Log.e(TAG, "TLS", e); return@Thread
             }
+            var lastError: Exception? = null
+            for (p in Status.PORTS) {
+                try {
+                    val s = GestoServer(this, p)
+                    s.makeSecure(factory, null)
+                    s.start(0, false)
+                    server = s
+                    Status.port = p
+                    Status.serverRunning = true
+                    Status.serverError = null
+                    Log.i(TAG, "Servidor en ${Status.url()}")
+                    return@Thread
+                } catch (e: Exception) {
+                    lastError = e
+                    Log.w(TAG, "Puerto $p ocupado: $e")
+                }
+            }
+            Status.serverRunning = false
+            Status.serverError = lastError?.toString() ?: "sin puertos libres"
         }.start()
     }
 

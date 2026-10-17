@@ -7,7 +7,9 @@ import kotlin.random.Random
 
 /** Estado compartido entre el servicio (que recibe órdenes) y la pantalla principal. */
 object Status {
-    const val PORT = 8443
+    /** Puertos a probar en orden: algunos TV ya usan el 8443 para servicios propios. */
+    val PORTS = listOf(8443, 9443, 10443, 18443, 28443, 38443)
+    @Volatile var port = PORTS[0]
 
     @Volatile var serviceRunning = false
     @Volatile var serverRunning = false
@@ -33,5 +35,5 @@ object Status {
             .filter { it.isNotEmpty() }
     } catch (e: Exception) { emptyList() }
 
-    fun url(): String = localIps().firstOrNull()?.let { "https://$it:$PORT" } ?: "(sin red)"
+    fun url(): String = localIps().firstOrNull()?.let { "https://$it:$port" } ?: "(sin red)"
 }

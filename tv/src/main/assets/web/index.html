@@ -236,7 +236,7 @@ function setHold(frac, label) {
    La página la sirve la app del TV (https://IP:8443). Ahí abrimos un WebSocket
    seguro al mismo TV. Si la página se abre desde otro lado, funciona en modo simulador. */
 const TVLINK = (() => {
-  const enabled = location.port === "8443";
+  const enabled = location.protocol === "https:" && /^\d+\.\d+\.\d+\.\d+$/.test(location.hostname);
   let ws = null, ok = false, needPin = false, backoff = 500, pingT = null, rtt = null;
   let mv = { dx: 0, dy: 0 }, flushT = null, scrollAcc = 0;
   const getPin = () => { try { return localStorage.getItem("gestotv.pin") || ""; } catch { return ""; } };
