@@ -592,7 +592,7 @@ function setMode(m) {
   $("apps").style.display = m === "apps" ? "flex" : "none";
   $("tv").style.display = m === "pointer" && !TVLINK.ok ? "block" : "none";
   $("speed").style.display = m === "pointer" ? "flex" : "none";
-  $("dpad").style.display = m === "dpad" ? "grid" : "none";
+  $("dpad").style.display = "none";                       // las flechas no se dibujan en el celular
   if (m === "dpad") { DP.prev = null; DP.ax = 0; DP.ay = 0; }
   if (m === "pointer") { tv.setPos(TV_W / 2, TV_H / 2); pointerReset(); PTR.pinched = false; PTR.dragging = false; }
   if (m !== "number") digits = "";
@@ -749,6 +749,7 @@ function step(hands, now) {
     }
     clearHold();
     if (hands.length >= 2) { DP.prev = null; return; }      // dos manos: pausa
+    if (main.pose !== "open") { DP.prev = null; return; }   // solo la palma abierta mueve
     // posición de la palma en "largos de mano" (igual a 1 m que a 3 m)
     const AR = (video.videoWidth || 4) / (video.videoHeight || 3);
     const P = i => ({ x: main.lm[i].x * AR, y: main.lm[i].y });
