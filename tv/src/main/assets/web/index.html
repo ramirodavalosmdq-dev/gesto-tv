@@ -147,7 +147,7 @@ video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
     <div class="row"><div class="g">👆</div><div><b>Mover el índice</b><span>Mueve el cursor. Funciona como un mouse: si sacás la mano y la volvés a poner, el cursor no salta.</span></div></div>
     <div class="row"><div class="g">👌</div><div><b>Pinza rápida (pulgar toca índice)</b><span>Clic. Dejando los otros dedos relajados, tipo "OK".</span></div></div>
     <div class="row"><div class="g">🤏</div><div><b>Pinza sostenida</b><span>Quieta = presión larga. Moviéndote = arrastrar.</span></div></div>
-    <div class="row"><div class="g">🤏</div><div><b>Arrastrar / scroll: pinza sostenida + mover la mano (más de ~8 cm)</b><span>Como arrastrar con el dedo: agarrás la lista y la movés, arriba/abajo o a los costados. Una pinza corta, aunque muevas un poco la mano, es un clic.</span></div></div>
+    <div class="row"><div class="g">🤏</div><div><b>Agarrar y arrastrar: cerrá la pinza y mové la mano</b><span>Como apoyar el dedo en la pantalla: el contenido sigue tu mano en vivo, en cualquier dirección, hasta que abrís la pinza. Pinza corta sin mover = clic.</span></div></div>
     <div class="row"><div class="g">✌️</div><div><b>Scroll alternativo: índice + medio arriba, mover vertical</b><span>Sin pellizcar.</span></div></div>
     <div class="row"><div class="g">🐢</div><div><b>Velocidad 1 a 5</b><span>Botón "Velocidad" en la esquina: tocalo, elegí, y se cierra solo a los 3 s. Queda guardada.</span></div></div>
     <div class="row"><div class="g">✊</div><div><b>Puño 0,7 s</b><span>Sale del puntero.</span></div></div>
@@ -438,7 +438,7 @@ const tv = {
     this.hist.push({ t: now, x: this.x, y: this.y });
     while (this.hist.length && now - this.hist[0].t > 400) this.hist.shift();
   },
-  move(dx, dy) { this.setPos(this.x + dx, this.y + dy); if (!PTR.dragging) TVLINK.move(dx, dy); },
+  move(dx, dy) { this.setPos(this.x + dx, this.y + dy); TVLINK.move(dx, dy); },
   posAgo(ms) { const t = performance.now() - ms; let p = null; for (const h of this.hist) { if (h.t <= t) p = h; } return p; },
   flash(cls, ms) { $("cursor").classList.add(cls); setTimeout(() => $("cursor").classList.remove(cls), ms); },
   click() {
@@ -449,7 +449,7 @@ const tv = {
   },
   longPress() { TVLINK.send({ t: "long" }); beep(600, 120); const n = this.hover?.dataset.t; say("Presión larga"); log("🤏 Presión larga" + (n ? ": " + n : "")); },
   pressStart() { TVLINK.send({ t: "drag", on: true }); $("cursor").classList.add("drag"); beep(700, 50); log("✊ Arrastrar"); },
-  release() { TVLINK.scrollXY(0, 0, true); TVLINK.send({ t: "drag", on: false }); $("cursor").classList.remove("drag"); log("Soltar"); },
+  release() { TVLINK.send({ t: "drag", on: false }); $("cursor").classList.remove("drag"); log("Soltar"); },
   scroll(dyPx, send = true) { const r = $("tv").getBoundingClientRect(); $("tvList").scrollTop += dyPx * r.height / TV_H; if (send) TVLINK.scrollXY(0, -dyPx); },
 };
 
@@ -479,7 +479,7 @@ function pointerStep(h, now) {
   const idxOut = dist(tip, w) > dist(P(5), w) * 1.0;
   if (!PTR.pinched && PTR.ratio < S.pinch && idxOut && h.pose !== "two") {
     PTR.pinched = true; PTR.pinchT = now; PTR.pinchAnchor = palm; PTR.dragging = false;
-    const back = tv.posAgo(120); if (back) tv.setPos(back.x, back.y);   // deshace el corrimiento al cerrar la pinza
+    const back = tv.posAgo(120); if (back) { const cx = back.x - tv.x, cy = back.y - tv.y; tv.setPos(back.x, back.y); TVLINK.move(cx, cy); }   // deshace el corrimiento al cerrar la pinza
     beep(1400, 25);
   } else if (PTR.pinched && PTR.ratio > S.pinch * 1.45) {
     PTR.pinched = false;
@@ -502,11 +502,11 @@ function pointerStep(h, now) {
     else if (PTR.pinched) {
       // durante la pinza el cursor sigue a la PALMA (la punta del índice se corre al pellizcar)
       // arrastre solo si la pinza dura más de 0,3 s Y la mano se movió bastante (~8 cm): si no, es un clic
-      if (!PTR.dragging && now - PTR.pinchT > 300 && Math.hypot(palm.x - PTR.pinchAnchor.x, palm.y - PTR.pinchAnchor.y) > 0.8) { PTR.dragging = true; tv.pressStart(); }
+      // agarrar: con la pinza cerrada, al mover la mano ~4 cm el TV apoya el "dedo" y lo arrastra siguiendo la mano en vivo
+      if (!PTR.dragging && Math.hypot(palm.x - PTR.pinchAnchor.x, palm.y - PTR.pinchAnchor.y) > 0.4) { PTR.dragging = true; tv.pressStart(); }
       if (PTR.dragging && PTR.anchorPrev) {
         const ddx = -(palm.x - PTR.anchorPrev.x) * gain, ddy = (palm.y - PTR.anchorPrev.y) * gain;
         tv.move(ddx, ddy); tv.scroll(-ddy, false);
-        TVLINK.scrollXY(ddx, ddy);   // en el TV: arrastrar el contenido en cualquier dirección
       }
     } else tv.move(dx * gain, dy * gain);
   }

@@ -10,6 +10,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.graphics.PixelFormat
 import android.media.AudioManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.DisplayMetrics
@@ -49,6 +50,14 @@ class GestoAccessibilityService : AccessibilityService() {
     private var y = 540f
     private val hideCursor = Runnable { cursor?.visibility = View.GONE }
     private var lastListScroll = 0L
+
+    // arrastre continuo: un "dedo" apoyado que sigue a la mano hasta que se abre la pinza
+    private var dragActive = false
+    private var dragEnding = false
+    private var dragBusy = false
+    private var dragStroke: GestureDescription.StrokeDescription? = null
+    private var dragLastX = 0f
+    private var dragLastY = 0f
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -120,6 +129,7 @@ class GestoAccessibilityService : AccessibilityService() {
         x = (x + dx * sw / REF_W).coerceIn(0f, sw - 1f)
         y = (y + dy * sh / REF_H).coerceIn(0f, sh - 1f)
         placeCursor(true)
+        if (dragActive) pumpDrag()
     }
 
     // ---------------- toques ----------------
@@ -177,7 +187,55 @@ class GestoAccessibilityService : AccessibilityService() {
         if (!ok) stroke(Path().apply { moveTo(x, y) }, 900)
     }
 
-    fun setDragging(d: Boolean) = main.post { cursor?.dragging = d }
+    fun setDragging(d: Boolean) = main.post {
+        cursor?.dragging = d
+        if (Build.VERSION.SDK_INT < 26) return@post
+        if (d) {
+            if (dragActive) return@post
+            dragActive = true; dragEnding = false; dragStroke = null
+            dragLastX = x; dragLastY = y
+            // apoyar el dedo donde está el cursor (el trazo queda "abierto" para continuar)
+            val path = Path().apply { moveTo(x, y); lineTo(x + 0.5f, y) }
+            dispatchDrag(GestureDescription.StrokeDescription(path, 0, 30, true), x + 0.5f, y)
+            Status.log("Arrastre: dedo apoyado")
+        } else if (dragActive) {
+            dragEnding = true
+            pumpDrag()
+        }
+    }
+
+    private fun dispatchDrag(stroke: GestureDescription.StrokeDescription, endX: Float, endY: Float) {
+        if (Build.VERSION.SDK_INT < 26) return
+        dragBusy = true
+        dragStroke = stroke
+        val ok = dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), object : GestureResultCallback() {
+            override fun onCompleted(g: GestureDescription?) {
+                dragBusy = false
+                dragLastX = endX; dragLastY = endY
+                if (stroke.willContinue()) pumpDrag() else { dragActive = false; dragStroke = null; Status.log("Arrastre: dedo levantado") }
+            }
+            override fun onCancelled(g: GestureDescription?) {
+                dragBusy = false; dragActive = false; dragStroke = null
+                Status.log("Arrastre cancelado por el sistema")
+            }
+        }, main)
+        if (!ok) { dragBusy = false; dragActive = false; dragStroke = null; Status.log("Arrastre no disponible") }
+    }
+
+    /** Extiende el trazo hasta la posición actual del cursor (o lo termina si se abrió la pinza). */
+    private fun pumpDrag() {
+        if (Build.VERSION.SDK_INT < 26 || dragBusy || !dragActive) return
+        val prev = dragStroke ?: return
+        val still = abs(x - dragLastX) < 1f && abs(y - dragLastY) < 1f
+        if (still && !dragEnding) return
+        val ex = if (still) dragLastX + 0.5f else x
+        val ey = if (still) dragLastY else y
+        val path = Path().apply { moveTo(dragLastX, dragLastY); lineTo(ex, ey) }
+        val next = try { prev.continueStroke(path, 0, 30, !dragEnding) } catch (e: Exception) {
+            dragActive = false; dragStroke = null; Status.log("Arrastre: $e"); return
+        }
+        dispatchDrag(next, ex, ey)
+    }
 
     /**
      * Arrastre en el punto del cursor (como deslizar el dedo). dx/dy en pantalla de referencia 1920x1080.
