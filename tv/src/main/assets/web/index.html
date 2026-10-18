@@ -113,7 +113,7 @@ video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
   <div id="digits"></div>
   <div id="apps"></div>
 
-  <div id="dpad"><span></span><div data-d="up">▲</div><span></span><div data-d="left">◀</div><div data-d="center" class="c">OK</div><div data-d="right">▶</div><span></span><div data-d="down">▼</div><span></span></div>
+  <div id="dpad"><span></span><div data-d="up">▲</div><span></span><div data-d="left">◀</div><div data-d="center" class="c">👏</div><div data-d="right">▶</div><span></span><div data-d="down">▼</div><span></span></div>
   <div id="vol"><div id="volNum">🔊</div><div id="volHint">Subí o bajá la mano · soltá la L para terminar</div></div>
   <div id="bottom">
     <div id="tvbar"><button id="bBack">⬅ Atrás</button><button id="bHome">🏠 Inicio</button><button id="bCur">🖱️ Cursor</button></div>
@@ -136,7 +136,8 @@ video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
     <h2>Modo flechas (el aro del control)</h2>
     <div class="row"><div class="g">✌️</div><div><b>V con los dedos hacia arriba, quieta 0,6 s</b><span>Entra al modo flechas (con el control activo).</span></div></div>
     <div class="row"><div class="g">🕹️</div><div><b>Mové la mano como un joystick</b><span>Arriba, abajo, izquierda o derecha = un casillero. Si la dejás corrida, sigue avanzando. Volvé al centro para frenar.</span></div></div>
-    <div class="row"><div class="g">👌</div><div><b>Pinza corta = OK</b><span>El botón del medio del aro: entra a lo seleccionado.</span></div></div>
+    <div class="row"><div class="g">👏</div><div><b>Aplauso = OK</b><span>El botón del medio del aro: entra a lo seleccionado. Escucha el aplauso y confirma con la cámara que juntaste las manos (un ruido de la película no lo dispara). La primera vez pide permiso de micrófono.</span></div></div>
+    <div class="row"><div class="g">👍</div><div><b>Pulgar hacia arriba, 0,4 s = OK</b><span>Alternativa sin aplaudir. (Pulgar al costado sigue siendo Atrás.)</span></div></div>
     <div class="row"><div class="g">✊</div><div><b>Puño 0,7 s</b><span>Sale del modo flechas.</span></div></div>
     <h2>Usar de lejos</h2>
     <div class="row"><div class="g">🔍</div><div><b>Botón de zoom (1x a 3x)</b><span>Desde el sillón usá 2x o 2,5x. Arrastrá la imagen con el dedo para que tu torso y tus manos queden en el centro. Queda guardado. Tip: la cámara trasera suele ver mejor de lejos.</span></div></div>
@@ -535,7 +536,32 @@ let mode = "off", modeSince = 0, lastActivity = 0, cooldownUntil = 0;
 let hold = { key: null, since: 0 };
 let trail = [];       // historial del centro de la mano para swipes
 let digits = "", digitArmed = true, lastDigitKey = null;
-const DP = { anchor: null, dir: null, next: 0, pinched: false };
+const DP = { anchor: null, dir: null, next: 0, pinched: false, okLatch: false };
+
+/* Aplauso = sonido corto y fuerte (micrófono) + las dos manos juntándose (cámara) en el último medio segundo.
+   La doble condición evita que un golpe en la película o un portazo lo dispare. */
+const CLAP = { an: null, buf: null, avg: 0.01, last: 0, handsCloseAt: 0, asked: false, ok: false };
+async function initClap() {
+  if (CLAP.asked) return; CLAP.asked = true;
+  try {
+    const st = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    audioCtx ??= new AudioContext();
+    const src = audioCtx.createMediaStreamSource(st);
+    CLAP.an = audioCtx.createAnalyser(); CLAP.an.fftSize = 1024;
+    CLAP.buf = new Float32Array(CLAP.an.fftSize);
+    src.connect(CLAP.an); CLAP.ok = true;
+    log("🎤 Aplauso listo para el OK");
+  } catch (e) { log("🎤 Sin micrófono: usá 👍 para el OK"); }
+}
+function clapHeard(now) {
+  if (!CLAP.ok) return false;
+  CLAP.an.getFloatTimeDomainData(CLAP.buf);
+  let peak = 0; for (const v of CLAP.buf) { const a = Math.abs(v); if (a > peak) peak = a; }
+  const loud = peak > Math.max(0.3, CLAP.avg * 6);
+  CLAP.avg = CLAP.avg * 0.97 + peak * 0.03;           // nivel de fondo (incluye el sonido del TV)
+  if (loud && now - CLAP.last > 700) { CLAP.last = now; return true; }
+  return false;
+}
 let backLatch = false;
 function dpadFlash(d) { const el = document.querySelector(`#dpad [data-d="${d}"]`); if (!el) return; el.classList.add("hit"); setTimeout(() => el.classList.remove("hit"), 160); }
 function dpadStep(d, now) {
@@ -567,7 +593,7 @@ function setMode(m) {
   $("tv").style.display = m === "pointer" && !TVLINK.ok ? "block" : "none";
   $("speed").style.display = m === "pointer" ? "flex" : "none";
   $("dpad").style.display = m === "dpad" ? "grid" : "none";
-  if (m === "dpad") { DP.anchor = null; DP.dir = null; DP.pinched = false; }
+  if (m === "dpad") { DP.anchor = null; DP.dir = null; DP.pinched = false; DP.okLatch = false; initClap(); }
   if (m === "pointer") { tv.setPos(TV_W / 2, TV_H / 2); pointerReset(); PTR.pinched = false; PTR.dragging = false; }
   if (m !== "number") digits = "";
   $("digits").textContent = m === "number" ? (digits || "_") : "";
@@ -612,6 +638,10 @@ function step(hands, now) {
   if (!hands.length) { clearHold(); trail = []; digitArmed = true; lastDigitKey = null; palmLatch = false; fistLatch = false; motPrev = null; volAcc = 0; swipeBuf = []; return; }
 
   const main = hands.reduce((a, b) => (b.size > a.size ? b : a)); // la mano más cercana
+  if (hands.length === 2) {
+    const sz = Math.max(hands[0].size, hands[1].size);
+    if (d2(hands[0].center, hands[1].center) < sz * 2.6) CLAP.handsCloseAt = now;
+  }
   trail.push({ x: main.center.x, y: main.center.y, t: now });
   trail = trail.filter(p => now - p.t < 700);
   if (mode !== "off") lastActivity = now;
@@ -713,10 +743,16 @@ function step(hands, now) {
       if (holdFor("exitd", 700, "Salir de flechas", now)) { setMode("on"); cooldownUntil = now + 800; sendCommand("dpad_off", "Flechas apagadas", "✌️ Flechas apagadas"); }
       return;
     }
+    // OK alternativo: 👍 pulgar hacia arriba, sostenido 0,4 s
+    if (main.pose !== "thumbup") DP.okLatch = false;
+    if (main.pose === "thumbup" && !DP.okLatch) {
+      if (holdFor("okthumb", 400, "OK", now)) { DP.okLatch = true; dpadStep("center", now); }
+      return;
+    }
+    if (main.pose === "thumbup") return;
     clearHold();
-    // OK = pinza corta
-    if (!DP.pinched && main.pinchR < 0.28 && !main.idxCurled) { DP.pinched = true; dpadStep("center", now); return; }
-    if (DP.pinched) { if (main.pinchR > 0.42) DP.pinched = false; return; }
+    // con las dos manos a la vista (por ejemplo, aplaudiendo) las flechas se pausan
+    if (hands.length >= 2) { DP.dir = null; return; }
     // posición de la palma en "largos de mano"
     const AR = (video.videoWidth || 4) / (video.videoHeight || 3);
     const P = i => ({ x: main.lm[i].x * AR, y: main.lm[i].y });
@@ -890,6 +926,7 @@ function loop() {
     const hands = res.landmarks.map((lm, i) => analyzeHand(lm, res.worldLandmarks?.[i]));
     draw(res);
     step(hands, now);
+    if (mode === "dpad" && clapHeard(now) && now - CLAP.handsCloseAt < 600) { dpadStep("center", now); log("👏 OK"); }
     $("readout").textContent = hands.length
       ? hands.map((h, i) => `Mano ${i + 1}: ${POSE_TXT[h.pose]} · ${h.count} dedos`).join("   |   ")
       : "Sin mano a la vista";
