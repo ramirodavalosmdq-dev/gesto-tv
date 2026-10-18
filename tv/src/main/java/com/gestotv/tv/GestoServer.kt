@@ -80,7 +80,7 @@ class GestoServer(private val ctx: android.content.Context, port: Int) : NanoWSD
             val svc = GestoAccessibilityService.instance
             if (svc == null) { info("El servicio de gestos está apagado en el TV (Accesibilidad → Gesto TV)"); return }
 
-            when (t) {
+            try { when (t) {
                 "move" -> svc.move(m.optDouble("dx", 0.0).toFloat(), m.optDouble("dy", 0.0).toFloat())
                 "cursor" -> svc.showCursor(m.optBoolean("show", true))
                 "click" -> svc.click()
@@ -107,7 +107,7 @@ class GestoServer(private val ctx: android.content.Context, port: Int) : NanoWSD
                     svc.launchableApps().forEach { arr.put(JSONObject().put("name", it.first).put("pkg", it.second)) }
                     reply(JSONObject().put("t", "apps").put("list", arr))
                 }
-            }
+            } } catch (e: Throwable) { Status.log("Error en orden $t: ${e.javaClass.simpleName}") }
         }
     }
 }

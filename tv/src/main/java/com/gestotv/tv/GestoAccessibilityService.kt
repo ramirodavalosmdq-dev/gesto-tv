@@ -13,6 +13,7 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.Message
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Gravity
@@ -39,7 +40,13 @@ class GestoAccessibilityService : AccessibilityService() {
         @Volatile var instance: GestoAccessibilityService? = null
     }
 
-    private val main = Handler(Looper.getMainLooper())
+    // Si una orden falla (una app que cambió la pantalla justo en ese momento, etc.) se anota y se sigue.
+    // Sin esto, un error cierra el servicio y Android lo deja "Desactivado" en Accesibilidad.
+    private val main = object : Handler(Looper.getMainLooper()) {
+        override fun dispatchMessage(msg: Message) {
+            try { super.dispatchMessage(msg) } catch (e: Throwable) { Log.e(TAG, "Orden fallida", e); Status.log("Error evitado: ${e.javaClass.simpleName}") }
+        }
+    }
     private lateinit var wm: WindowManager
     private var cursor: CursorView? = null
     private var lp: WindowManager.LayoutParams? = null
@@ -65,6 +72,7 @@ class GestoAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        Status.installCrashLog(this)
         instance = this
         Status.serviceRunning = true
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
@@ -74,6 +82,7 @@ class GestoAccessibilityService : AccessibilityService() {
         x = sw / 2f; y = sh / 2f
         addCursor()
         Status.log("Servicio de gestos conectado")
+        Status.reportLastCrash(this)
         ServerService.start(this)
     }
 

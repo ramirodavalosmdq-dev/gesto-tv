@@ -26,6 +26,27 @@ object Status {
     }
     fun logText(): String = synchronized(logLines) { logLines.joinToString("\n") }
 
+    /** Guarda la causa si la app se cierra por un error, para mostrarla la próxima vez. */
+    fun installCrashLog(ctx: Context) {
+        val prev = Thread.getDefaultUncaughtExceptionHandler()
+        if (prev is CrashLogger) return
+        Thread.setDefaultUncaughtExceptionHandler(CrashLogger(ctx.applicationContext, prev))
+    }
+    private class CrashLogger(val ctx: Context, val prev: Thread.UncaughtExceptionHandler?) : Thread.UncaughtExceptionHandler {
+        override fun uncaughtException(t: Thread, e: Throwable) {
+            try {
+                val where = e.stackTrace.firstOrNull { it.className.startsWith("com.gestotv") }?.let { "${it.fileName}:${it.lineNumber}" } ?: ""
+                ctx.getSharedPreferences("gesto", Context.MODE_PRIVATE).edit()
+                    .putString("lastCrash", "${e.javaClass.simpleName} $where").commit()
+            } catch (_: Throwable) {}
+            prev?.uncaughtException(t, e)
+        }
+    }
+    fun reportLastCrash(ctx: Context) {
+        val p = ctx.getSharedPreferences("gesto", Context.MODE_PRIVATE)
+        p.getString("lastCrash", null)?.let { log("Último cierre: $it"); p.edit().remove("lastCrash").apply() }
+    }
+
     fun pin(ctx: Context): String {
         val prefs = ctx.getSharedPreferences("gesto", Context.MODE_PRIVATE)
         return prefs.getString("pin", null) ?: Random.nextInt(1000, 9999).toString().also {

@@ -379,9 +379,9 @@ function analyzeHand(lm, wl) {
 
 /* ===================== AJUSTES DEL PUNTERO ===================== */
 const SPEEDS = [4.5, 3.4, 2.5, 1.8, 1.3]; // largos de mano para cruzar la pantalla, nivel 1 (lento) a 5 (rápido)
-const DEFAULTS = { dpadStep: 0.7, dpadSpeed: 0.9, autoOff: 20, volPts: 5, zoom: 1, panX: 0, panY: 0, level: 3, accel: 0.8, minCut: 1.2, beta: 0.3, dead: 0.01, pinch: 0.30, longMs: 600 };
+const DEFAULTS = { dpadStep: 0.4, dpadSpeed: 0.9, autoOff: 20, volPts: 5, zoom: 1, panX: 0, panY: 0, level: 3, accel: 0.8, minCut: 1.2, beta: 0.3, dead: 0.01, pinch: 0.30, longMs: 600 };
 const SLIDERS = [
-  ["dpadStep", "Flechas: recorrido por paso", "Cuánto tenés que mover la palma para avanzar un casillero (en largos de mano; 0,7 ≈ 7 cm). Más alto = menos sensible.", 0.3, 1.5, 0.05],
+  ["dpadStep", "Flechas: recorrido por paso", "Cuánto tenés que mover la palma para avanzar un casillero (en largos de mano; 0,4 ≈ 4 cm). Más alto = menos sensible.", 0.3, 1.5, 0.05],
   ["dpadSpeed", "Flechas: rapidez mínima", "Movimientos más lentos que esto no cuentan (así podés volver la mano al centro despacio sin mover la selección).", 0.3, 2.5, 0.1],
   ["autoOff", "Apagado automático (s)", "Segundos sin ver tu mano hasta que el control se apaga solo.", 10, 60, 5],
   ["volPts", "Volumen por paso",    "Cuántos puntos sube o baja el volumen en cada paso del gesto L.", 1, 10, 1],
@@ -394,6 +394,7 @@ const SLIDERS = [
 ];
 let S = { ...DEFAULTS };
 try { Object.assign(S, JSON.parse(localStorage.getItem("gestotv.ptr") || "{}")); } catch {}
+if (!S.v2) { S.dpadStep = DEFAULTS.dpadStep; S.v2 = 1; }       // nuevo paso de flechas: 4 cm
 function saveS() { try { localStorage.setItem("gestotv.ptr", JSON.stringify(S)); } catch {} }
 function renderSliders() {
   $("sliders").innerHTML = SLIDERS.map(([k, t, d, mn, mx, st]) =>

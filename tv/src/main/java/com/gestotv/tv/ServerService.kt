@@ -9,7 +9,10 @@ import android.content.Intent
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 
 /**
@@ -38,9 +41,51 @@ class ServerService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private val watch = Handler(Looper.getMainLooper())
+    private var downSince = 0L
+    private var lastFix = 0L
+    private val watchdog = object : Runnable {
+        override fun run() {
+            try { checkA11y() } catch (e: Throwable) { Status.log("Vigilancia: ${e.javaClass.simpleName}") }
+            watch.postDelayed(this, 3000)
+        }
+    }
+
+    /**
+     * Si el servicio de gestos se cayó, lo vuelve a activar solo (apagar y prender en Accesibilidad).
+     * Necesita un permiso que se da una sola vez desde la PC:
+     *   adb shell pm grant com.gestotv.tv android.permission.WRITE_SECURE_SETTINGS
+     */
+    private fun checkA11y() {
+        if (GestoAccessibilityService.instance != null) { downSince = 0; return }
+        val now = System.currentTimeMillis()
+        if (downSince == 0L) { downSince = now; return }
+        if (now - downSince < 4000 || now - lastFix < 15000) return
+        lastFix = now
+        if (checkSelfPermission("android.permission.WRITE_SECURE_SETTINGS") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            Status.log("Servicio de gestos caído: reactivalo en Accesibilidad")
+            return
+        }
+        val me = "$packageName/${GestoAccessibilityService::class.java.name}"
+        val cr = contentResolver
+        val key = Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        val others = (Settings.Secure.getString(cr, key) ?: "").split(':')
+            .filter { it.isNotBlank() && !it.equals(me, true) && !it.equals("$packageName/.GestoAccessibilityService", true) }
+        Settings.Secure.putString(cr, key, others.joinToString(":"))
+        watch.postDelayed({
+            try {
+                Settings.Secure.putString(cr, key, (others + me).joinToString(":"))
+                Settings.Secure.putInt(cr, Settings.Secure.ACCESSIBILITY_ENABLED, 1)
+                Status.log("Servicio de gestos reactivado solo")
+            } catch (e: Throwable) { Status.log("No pude reactivar: ${e.javaClass.simpleName}") }
+        }, 700)
+    }
+
     override fun onCreate() {
         super.onCreate()
+        Status.installCrashLog(this)
         goForeground()
+        watch.postDelayed(watchdog, 5000)
         try {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "GestoTV:server").apply { setReferenceCounted(false); acquire() }
@@ -59,6 +104,7 @@ class ServerService : Service() {
 
     override fun onDestroy() {
         Status.log("Servicio detenido por el sistema")
+        watch.removeCallbacksAndMessages(null)
         try { server?.stop() } catch (_: Exception) {}
         server = null
         Status.serverRunning = false
