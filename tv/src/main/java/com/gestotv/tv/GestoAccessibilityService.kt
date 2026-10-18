@@ -58,6 +58,10 @@ class GestoAccessibilityService : AccessibilityService() {
     private var dragStroke: GestureDescription.StrokeDescription? = null
     private var dragLastX = 0f
     private var dragLastY = 0f
+    private var dragWanted = false      // el celular sigue con la pinza cerrada
+    private var dragRestarts = 0
+    private var dragAlt = 0.5f
+    private val dragKeep = Runnable { pumpDrag(keepAlive = true) }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -190,17 +194,27 @@ class GestoAccessibilityService : AccessibilityService() {
     fun setDragging(d: Boolean) = main.post {
         cursor?.dragging = d
         if (Build.VERSION.SDK_INT < 26) return@post
+        dragWanted = d
         if (d) {
             if (dragActive) return@post
+            dragRestarts = 0
+            beginDrag()
+        } else if (dragActive) {
+            dragEnding = true
+            main.removeCallbacks(dragKeep)
+            pumpDrag()
+        }
+    }
+
+    private fun beginDrag() {
+        if (Build.VERSION.SDK_INT < 26) return
+        run {
             dragActive = true; dragEnding = false; dragStroke = null
             dragLastX = x; dragLastY = y
             // apoyar el dedo donde está el cursor (el trazo queda "abierto" para continuar)
             val path = Path().apply { moveTo(x, y); lineTo(x + 0.5f, y) }
             dispatchDrag(GestureDescription.StrokeDescription(path, 0, 30, true), x + 0.5f, y)
             Status.log("Arrastre: dedo apoyado")
-        } else if (dragActive) {
-            dragEnding = true
-            pumpDrag()
         }
     }
 
@@ -216,19 +230,25 @@ class GestoAccessibilityService : AccessibilityService() {
             }
             override fun onCancelled(g: GestureDescription?) {
                 dragBusy = false; dragActive = false; dragStroke = null
-                Status.log("Arrastre cancelado por el sistema")
+                // si la pinza sigue cerrada, volver a apoyar el dedo donde está el cursor
+                if (dragWanted && dragRestarts < 5) { dragRestarts++; Status.log("Arrastre: reintento $dragRestarts"); beginDrag() }
+                else Status.log("Arrastre cancelado por el sistema")
             }
         }, main)
         if (!ok) { dragBusy = false; dragActive = false; dragStroke = null; Status.log("Arrastre no disponible") }
     }
 
     /** Extiende el trazo hasta la posición actual del cursor (o lo termina si se abrió la pinza). */
-    private fun pumpDrag() {
+    private fun pumpDrag(keepAlive: Boolean = false) {
         if (Build.VERSION.SDK_INT < 26 || dragBusy || !dragActive) return
         val prev = dragStroke ?: return
         val still = abs(x - dragLastX) < 1f && abs(y - dragLastY) < 1f
-        if (still && !dragEnding) return
-        val ex = if (still) dragLastX + 0.5f else x
+        if (still && !dragEnding && !keepAlive) {
+            // mano quieta con la pinza cerrada: mantener el dedo apoyado (micro-movimiento cada 80 ms)
+            main.removeCallbacks(dragKeep); main.postDelayed(dragKeep, 80); return
+        }
+        if (still) dragAlt = -dragAlt
+        val ex = if (still) dragLastX + dragAlt else x
         val ey = if (still) dragLastY else y
         val path = Path().apply { moveTo(dragLastX, dragLastY); lineTo(ex, ey) }
         val next = try { prev.continueStroke(path, 0, 30, !dragEnding) } catch (e: Exception) {
@@ -262,6 +282,57 @@ class GestoAccessibilityService : AccessibilityService() {
             val dur = (len / 0.5f).toLong().coerceIn(120L, 700L) // lento = sin "lanzar" la lista
             stroke(Path().apply { moveTo(x0, y0); lineTo(x1, y1) }, dur)
         }
+    }
+
+    // ---------------- flechas del control (D-pad) ----------------
+    /**
+     * Mueve la selección como las flechas del aro del control.
+     * Android 13+: flechas reales del sistema. Android 11/12: mueve el foco de la app al elemento vecino
+     * en esa dirección (lo mismo que hace la app al recibir una flecha); en el borde de una lista la desplaza.
+     */
+    fun dpad(dir: String) = main.post {
+        if (Build.VERSION.SDK_INT >= 33) {
+            performGlobalAction(when (dir) {
+                "up" -> GLOBAL_ACTION_DPAD_UP; "down" -> GLOBAL_ACTION_DPAD_DOWN
+                "left" -> GLOBAL_ACTION_DPAD_LEFT; "right" -> GLOBAL_ACTION_DPAD_RIGHT
+                else -> GLOBAL_ACTION_DPAD_CENTER
+            })
+            return@post
+        }
+        val root = rootInActiveWindow
+        if (root == null) { Status.log("Flechas: no hay ventana activa"); return@post }
+        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+
+        if (dir == "center") {
+            var n: AccessibilityNodeInfo? = focused
+            while (n != null && !n.isClickable) n = n.parent
+            val ok = n?.performAction(AccessibilityNodeInfo.ACTION_CLICK) ?: false
+            Status.log(if (ok) "OK (elemento seleccionado)" else "OK: no hay nada seleccionado")
+            return@post
+        }
+        if (focused == null) {
+            val first = firstFocusable(root)
+            val ok = first?.performAction(AccessibilityNodeInfo.ACTION_FOCUS) ?: false
+            Status.log(if (ok) "Flechas: selección inicial" else "Flechas: esta app no muestra qué está seleccionado")
+            return@post
+        }
+        val direction = when (dir) { "up" -> View.FOCUS_UP; "down" -> View.FOCUS_DOWN; "left" -> View.FOCUS_LEFT; else -> View.FOCUS_RIGHT }
+        val next = try { focused.focusSearch(direction) } catch (e: Exception) { null }
+        val moved = next != null && next != focused && next.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        if (!moved) {
+            var p = focused.parent
+            while (p != null && !p.isScrollable) p = p.parent
+            val fwd = dir == "down" || dir == "right"
+            val sc = p?.performAction(if (fwd) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD) ?: false
+            Status.log(if (sc) "Flechas: desplazó la lista" else "Flechas: no hay nada hacia $dir")
+        }
+    }
+
+    private fun firstFocusable(n: AccessibilityNodeInfo, depth: Int = 0): AccessibilityNodeInfo? {
+        if (depth > 40) return null
+        if (n.isFocusable && n.isVisibleToUser && n.childCount == 0) return n
+        for (i in 0 until n.childCount) n.getChild(i)?.let { c -> firstFocusable(c, depth + 1)?.let { return it } }
+        return if (n.isFocusable && n.isVisibleToUser) n else null
     }
 
     // ---------------- teclas / sistema ----------------

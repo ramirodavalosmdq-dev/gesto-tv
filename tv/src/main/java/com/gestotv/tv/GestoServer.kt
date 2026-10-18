@@ -84,6 +84,7 @@ class GestoServer(private val ctx: android.content.Context, port: Int) : NanoWSD
                 "move" -> svc.move(m.optDouble("dx", 0.0).toFloat(), m.optDouble("dy", 0.0).toFloat())
                 "cursor" -> svc.showCursor(m.optBoolean("show", true))
                 "click" -> svc.click()
+                "dpad" -> svc.dpad(m.optString("dir", "center"))
                 "long" -> svc.longPress()
                 "drag" -> svc.setDragging(m.optBoolean("on", false))
                 "scroll" -> svc.scroll(m.optDouble("dx", 0.0).toFloat(), m.optDouble("dy", 0.0).toFloat())

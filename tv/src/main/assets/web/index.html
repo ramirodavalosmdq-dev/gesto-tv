@@ -24,6 +24,10 @@ video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 #link.ok{color:var(--on);border-color:var(--on)} #link.bad{color:#f87171;border-color:#f87171}
 #tvbar{display:none;gap:8px;margin-bottom:8px}
 #tvbar button{flex:1;padding:10px 6px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-weight:700;font-size:14px}
+#dpad{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);display:none;grid-template-columns:repeat(3,64px);grid-template-rows:repeat(3,64px);gap:6px;pointer-events:none;z-index:3}
+#dpad div{display:grid;place-items:center;border-radius:16px;background:var(--panel);border:1px solid var(--line);font-size:28px;opacity:.75;transition:all .08s}
+#dpad div.hit{background:#22d3ee;color:#04121b;opacity:1;transform:scale(1.12)}
+#dpad .c{border-radius:50%}
 #vol{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);display:none;flex-direction:column;align-items:center;gap:10px;pointer-events:none;z-index:3}
 #volNum{font-size:56px;font-weight:900;text-shadow:0 4px 24px rgba(0,0,0,.7)}
 #volHint{font-size:14px;color:var(--muted);background:var(--panel);padding:6px 12px;border-radius:10px}
@@ -109,6 +113,7 @@ video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
   <div id="digits"></div>
   <div id="apps"></div>
 
+  <div id="dpad"><span></span><div data-d="up">▲</div><span></span><div data-d="left">◀</div><div data-d="center" class="c">OK</div><div data-d="right">▶</div><span></span><div data-d="down">▼</div><span></span></div>
   <div id="vol"><div id="volNum">🔊</div><div id="volHint">Subí o bajá la mano · soltá la L para terminar</div></div>
   <div id="bottom">
     <div id="tvbar"><button id="bBack">⬅ Atrás</button><button id="bHome">🏠 Inicio</button><button id="bCur">🖱️ Cursor</button></div>
@@ -126,6 +131,13 @@ video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 
   <div id="guide">
     <button class="icon-btn" id="btnGuideClose" style="float:right">✕</button>
+    <h2>Atrás</h2>
+    <div class="row"><div class="g">👍</div><div><b>Pulgar apuntando al costado, 0,5 s</b><span>Como la flecha ⬅ del control: sale de la app o vuelve a la pantalla anterior. Funciona en ACTIVO, PUNTERO y FLECHAS.</span></div></div>
+    <h2>Modo flechas (el aro del control)</h2>
+    <div class="row"><div class="g">✌️</div><div><b>V con los dedos hacia arriba, quieta 0,6 s</b><span>Entra al modo flechas (con el control activo).</span></div></div>
+    <div class="row"><div class="g">🕹️</div><div><b>Mové la mano como un joystick</b><span>Arriba, abajo, izquierda o derecha = un casillero. Si la dejás corrida, sigue avanzando. Volvé al centro para frenar.</span></div></div>
+    <div class="row"><div class="g">👌</div><div><b>Pinza corta = OK</b><span>El botón del medio del aro: entra a lo seleccionado.</span></div></div>
+    <div class="row"><div class="g">✊</div><div><b>Puño 0,7 s</b><span>Sale del modo flechas.</span></div></div>
     <h2>Usar de lejos</h2>
     <div class="row"><div class="g">🔍</div><div><b>Botón de zoom (1x a 3x)</b><span>Desde el sillón usá 2x o 2,5x. Arrastrá la imagen con el dedo para que tu torso y tus manos queden en el centro. Queda guardado. Tip: la cámara trasera suele ver mejor de lejos.</span></div></div>
     <h2>Activar / desactivar</h2>
@@ -192,6 +204,7 @@ const MODE_UI = {
   number: { text: "MODO NÚMERO", color: "var(--num)" },
   apps:   { text: "MODO APPS",   color: "var(--app)" },
   pointer:{ text: "MODO PUNTERO",color: "var(--accent)" },
+  dpad:   { text: "MODO FLECHAS",color: "#22d3ee" },
 };
 let voiceOn = true;
 $("btnVoice").onclick = () => { voiceOn = !voiceOn; $("btnVoice").textContent = voiceOn ? "🔊" : "🔇"; };
@@ -295,7 +308,7 @@ function toTv(cmd) {
   if (cmd.startsWith("channel:")) return { t: "digits", v: cmd.slice(8) };
   if (cmd.startsWith("app:")) return { t: "app", name: cmd.slice(4) };
   if (cmd === "pointer_on") return { t: "cursor", show: true };
-  if (cmd === "pointer_off" || cmd === "deactivate") return { t: "cursor", show: false };
+  if (cmd === "pointer_off" || cmd === "deactivate" || cmd === "dpad_on") return { t: "cursor", show: false };
   return null;
 }
 $("bBack").onclick = () => { TVLINK.send({ t: "key", k: "back" }); beep(); };
@@ -343,7 +356,9 @@ function analyzeHand(lm, wl) {
 
   let pose = "other";
   const minOtherY = Math.min(...[5, 6, 8, 9, 12, 13, 16, 17, 20].map(i => lm[i].y));
+  const tdx = lm[4].x - lm[2].x, tdy = lm[4].y - lm[2].y;
   if (thumb && nonThumb === 0 && lm[4].y < minOtherY - size * 0.1) pose = "thumbup";
+  else if (thumb && nonThumb === 0 && Math.abs(tdx) > Math.abs(tdy) * 1.3 && d2(lm[4], lm[9]) > size * 0.75) pose = "thumbside";
   else if (nonThumb >= 4 && thumb) pose = "open";
   else if (nonThumb >= 4) pose = "flat";               // mano estirada con el pulgar pegado (típico en palma arriba/abajo)
   else if (nonThumb === 0 && !thumb) pose = "fist";
@@ -359,7 +374,8 @@ function analyzeHand(lm, wl) {
   const v2 = { x: lm[17].x - W.x, y: lm[17].y - W.y, z: lm[17].z - W.z };
   const ny = v1.z * v2.x - v1.x * v2.z;
   const idxCurled = d2(lm[8], W) < d2(lm[5], W) * 1.05; // punta del índice metida en la palma (puño real, no pinza)
-  return { ext, count, nonThumb, pose, center, size, ny, idxCurled, lm };
+  const pinchR = d2(lm[4], lm[8]) / size;   // pulgar-índice (para el OK del modo flechas)
+  return { ext, count, nonThumb, pose, center, size, ny, idxCurled, lm, pinchR };
 }
 
 /* ===================== AJUSTES DEL PUNTERO ===================== */
@@ -519,6 +535,13 @@ let mode = "off", modeSince = 0, lastActivity = 0, cooldownUntil = 0;
 let hold = { key: null, since: 0 };
 let trail = [];       // historial del centro de la mano para swipes
 let digits = "", digitArmed = true, lastDigitKey = null;
+const DP = { anchor: null, dir: null, next: 0, pinched: false };
+let backLatch = false;
+function dpadFlash(d) { const el = document.querySelector(`#dpad [data-d="${d}"]`); if (!el) return; el.classList.add("hit"); setTimeout(() => el.classList.remove("hit"), 160); }
+function dpadStep(d, now) {
+  beep(d === "center" ? 1300 : 1000, 25); navigator.vibrate?.(12); dpadFlash(d);
+  TVLINK.send({ t: "dpad", dir: d }); lastActivity = now;
+}
 let palmLatch = false, fistLatch = false, muted = false;
 let motPrev = null, motScale = null, volAcc = 0, volLastT = 0, volSpokenT = 0, swipeBuf = [];
 let lastDigitAt = 0, volGrab = false, volNet = 0;
@@ -543,6 +566,8 @@ function setMode(m) {
   $("apps").style.display = m === "apps" ? "flex" : "none";
   $("tv").style.display = m === "pointer" && !TVLINK.ok ? "block" : "none";
   $("speed").style.display = m === "pointer" ? "flex" : "none";
+  $("dpad").style.display = m === "dpad" ? "grid" : "none";
+  if (m === "dpad") { DP.anchor = null; DP.dir = null; DP.pinched = false; }
   if (m === "pointer") { tv.setPos(TV_W / 2, TV_H / 2); pointerReset(); PTR.pinched = false; PTR.dragging = false; }
   if (m !== "number") digits = "";
   $("digits").textContent = m === "number" ? (digits || "_") : "";
@@ -577,6 +602,7 @@ function detectSwipe(now) {
 function step(hands, now) {
   // ---- timeouts
   if (mode === "on" && now - lastActivity > S.autoOff * 1000) { setMode("off"); say("Control apagado"); log("Apagado automático"); }
+  if (mode === "dpad" && now - lastActivity > Math.max(30000, S.autoOff * 1000)) { setMode("on"); say("Flechas apagadas"); log("Modo flechas apagado por tiempo"); }
   if (mode === "pointer" && now - lastActivity > Math.max(30000, S.autoOff * 1000)) { setMode("on"); say("Puntero apagado"); log("Puntero apagado por tiempo"); }
   if (mode === "number" && digits && now - lastDigitAt > CFG.numberAutoMs) { const ch = digits; setMode("on"); cooldownUntil = now + 1000; sendCommand("channel:" + ch, "Canal " + ch, "📺 Canal " + ch); return; }
   if (mode === "number" && digits) { const left = Math.max(0, CFG.numberAutoMs - (now - lastDigitAt)); $("digits").textContent = digits + " ⏳" + Math.ceil(left / 1000); }
@@ -594,8 +620,8 @@ function step(hands, now) {
   // ---- palma quieta 2 s: activar / desactivar (desde cualquier modo)
   if (main.pose !== "open") palmLatch = false;
   if (main.pose !== "fist") fistLatch = false;
-  if (main.pose === "open" && palmLatch) return;
-  if (main.pose === "open" && hands.length === 1 && isStill()) {
+  if (mode !== "dpad" && main.pose === "open" && palmLatch) return;
+  if (mode !== "dpad" && main.pose === "open" && hands.length === 1 && isStill()) {   // en flechas la palma se usa de joystick
     if (holdFor("palm", CFG.activateHoldMs, mode === "off" ? "Activando…" : "Apagando…", now)) {
       if (mode === "off") { setMode("on"); sendCommand("activate", "Control activado", "✋ Control activado"); }
       else { setMode("off"); sendCommand("deactivate", "Control apagado", "✋ Control apagado"); }
@@ -604,6 +630,13 @@ function step(hands, now) {
     return;
   }
   if (mode === "off") { clearHold(); return; }
+
+  // ---- ATRÁS: pulgar al costado, 0,5 s (como la flecha ⬅ del control)
+  if (main.pose !== "thumbside") backLatch = false;
+  if ((mode === "on" || mode === "pointer" || mode === "dpad") && main.pose === "thumbside" && !backLatch && now >= cooldownUntil) {
+    if (holdFor("back", 500, "Atrás", now)) { backLatch = true; cooldownUntil = now + 500; sendCommand("back", "Atrás", "⬅ Atrás"); }
+    return;
+  }
 
   // ---- modo ACTIVO
   if (mode === "on") {
@@ -661,11 +694,45 @@ function step(hands, now) {
       return;
     }
     if (main.pose === "point") return;
+    if (main.pose === "two" && Math.hypot(mdx, mdy) / mdt < 1.5) {
+      if (holdFor("two", 600, "Modo flechas", now)) { setMode("dpad"); cooldownUntil = now + 500; sendCommand("dpad_on", "Modo flechas", "✌️ Modo flechas"); }
+      return;
+    }
+    if (main.pose === "two") return;
     if (main.pose === "A") {
       if (holdFor("A", 600, "Modo apps", now)) { setMode("apps"); cooldownUntil = now + 900; digitArmed = false; sendCommand("mode_apps", "Modo apps. Elegí con los dedos", "🅰️ Modo apps"); }
       return;
     }
     clearHold();
+    return;
+  }
+
+  // ---- modo FLECHAS: joystick con la mano
+  if (mode === "dpad") {
+    if (main.pose === "fist" && main.idxCurled) {
+      if (holdFor("exitd", 700, "Salir de flechas", now)) { setMode("on"); cooldownUntil = now + 800; sendCommand("dpad_off", "Flechas apagadas", "✌️ Flechas apagadas"); }
+      return;
+    }
+    clearHold();
+    // OK = pinza corta
+    if (!DP.pinched && main.pinchR < 0.28 && !main.idxCurled) { DP.pinched = true; dpadStep("center", now); return; }
+    if (DP.pinched) { if (main.pinchR > 0.42) DP.pinched = false; return; }
+    // posición de la palma en "largos de mano"
+    const AR = (video.videoWidth || 4) / (video.videoHeight || 3);
+    const P = i => ({ x: main.lm[i].x * AR, y: main.lm[i].y });
+    const sc = Math.max(d2(P(0), P(9)), d2(P(5), P(17)) * 1.3);
+    const px = main.center.x * AR / sc, py = main.center.y / sc;
+    if (!DP.anchor) { DP.anchor = { x: px, y: py }; return; }
+    const ox = -(px - DP.anchor.x), oy = py - DP.anchor.y, m = Math.hypot(ox, oy);
+    if (m < 0.35) {                          // en el centro: suelta la flecha y el centro se acomoda solo
+      DP.dir = null; DP.anchor.x += (px - DP.anchor.x) * 0.05; DP.anchor.y += (py - DP.anchor.y) * 0.05;
+      return;
+    }
+    if (m > 0.6) {
+      const d = Math.abs(ox) > Math.abs(oy) ? (ox > 0 ? "right" : "left") : (oy > 0 ? "down" : "up");
+      if (d !== DP.dir) { DP.dir = d; DP.next = now + 450; dpadStep(d, now); }        // primer paso al instante
+      else if (now >= DP.next) { DP.next = now + 220; dpadStep(d, now); }             // mantenida: repite
+    }
     return;
   }
 
@@ -740,7 +807,7 @@ function draw(results) {
 }
 
 /* ===================== ARRANQUE ===================== */
-const POSE_TXT = { L: "L", flat: "mano estirada", open: "mano abierta", fist: "puño", thumbup: "pulgar arriba", A: "A", horns: "cuernitos", point: "índice", two: "dos dedos", other: "—" };
+const POSE_TXT = { thumbside: "pulgar al costado", L: "L", flat: "mano estirada", open: "mano abierta", fist: "puño", thumbup: "pulgar arriba", A: "A", horns: "cuernitos", point: "índice", two: "dos dedos", other: "—" };
 let landmarker, facing = "user", stream, lastVideoTime = -1, frames = 0, fpsT = performance.now();
 
 /* ===================== ZOOM =====================
