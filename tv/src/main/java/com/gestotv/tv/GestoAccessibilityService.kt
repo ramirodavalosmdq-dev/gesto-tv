@@ -84,6 +84,7 @@ class GestoAccessibilityService : AccessibilityService() {
         Status.log("Servicio de gestos conectado")
         Status.reportLastCrash(this)
         ServerService.start(this)
+        KeyBridge.start(this)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
@@ -300,6 +301,9 @@ class GestoAccessibilityService : AccessibilityService() {
      * en esa dirección (lo mismo que hace la app al recibir una flecha); en el borde de una lista la desplaza.
      */
     fun dpad(dir: String) = main.post {
+        // teclas reales del control: andan en cualquier pantalla (Flow, YouTube…)
+        val code = when (dir) { "up" -> KeyBridge.UP; "down" -> KeyBridge.DOWN; "left" -> KeyBridge.LEFT; "right" -> KeyBridge.RIGHT; else -> KeyBridge.CENTER }
+        if (KeyBridge.key(this, code)) return@post
         if (Build.VERSION.SDK_INT >= 33) {
             performGlobalAction(when (dir) {
                 "up" -> GLOBAL_ACTION_DPAD_UP; "down" -> GLOBAL_ACTION_DPAD_DOWN

@@ -49,4 +49,5 @@ dependencies {
     implementation("org.nanohttpd:nanohttpd-websocket:2.3.1")
     implementation("org.bouncycastle:bcpkix-jdk18on:1.78.1")
     implementation("com.google.zxing:core:3.5.3")
+    implementation("dev.mobile:dadb:1.2.10")
 }
