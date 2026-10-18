@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="a11y_desc">Gesto TV dibuja un cursor en la pantalla y ejecuta clics, scroll, Atrás, Inicio, volumen y apertura de apps que mandás con gestos desde tu celular. Solo recibe órdenes de tu red Wi-Fi y con el código que muestra la app.</string>
+    <string name="a11y_desc">Gesto TV dibuja un cursor en la pantalla y ejecuta clics, scroll, Atrás, Inicio, volumen y apertura de apps que mandás con gestos desde tu celular. Lee qué botón o lista hay bajo el cursor solo para poder tocarlo. Solo recibe órdenes de tu red Wi-Fi y con el código que muestra la app; no guarda ni envía nada de lo que hay en pantalla.</string>
 </resources>

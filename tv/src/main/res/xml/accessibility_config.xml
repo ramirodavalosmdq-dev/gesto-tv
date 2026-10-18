@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Sin filtrar teclas: el control remoto físico nunca queda bloqueado. -->
+<!-- Sin filtrar teclas: el control remoto físico nunca queda bloqueado.
+     Lee la estructura de la pantalla solo para encontrar el botón o la lista que está bajo el cursor. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:notificationTimeout="500"
     android:canPerformGestures="true"
-    android:canRetrieveWindowContent="false"
+    android:canRetrieveWindowContent="true"
+    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows"
     android:description="@string/a11y_desc"
     android:settingsActivity="com.gestotv.tv.MainActivity" />

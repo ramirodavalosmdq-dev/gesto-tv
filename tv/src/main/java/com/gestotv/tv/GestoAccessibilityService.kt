@@ -5,6 +5,9 @@ import android.accessibilityservice.GestureDescription
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Path
+import android.graphics.Rect
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import android.graphics.PixelFormat
 import android.media.AudioManager
 import android.os.Handler
@@ -45,6 +48,7 @@ class GestoAccessibilityService : AccessibilityService() {
     private var x = 960f
     private var y = 540f
     private val hideCursor = Runnable { cursor?.visibility = View.GONE }
+    private var lastListScroll = 0L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -126,26 +130,80 @@ class GestoAccessibilityService : AccessibilityService() {
         dispatchGesture(g, null, null)
     }
 
+    /**
+     * Elemento más chico de la pantalla, bajo el cursor, que cumple [pred].
+     * Recorre las ventanas de arriba hacia abajo (un menú encima gana sobre la app de atrás).
+     */
+    private fun nodeAt(px: Int, py: Int, pred: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
+        val r = Rect()
+        val roots: List<AccessibilityNodeInfo> = try {
+            windows.filter { it.type != AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY }
+                .sortedByDescending { it.layer }
+                .filter { it.getBoundsInScreen(r); r.contains(px, py) }
+                .mapNotNull { it.root }
+        } catch (e: Exception) { emptyList() }
+        val all = roots.ifEmpty { listOfNotNull(rootInActiveWindow) }
+        for (root in all) {
+            var best: AccessibilityNodeInfo? = null
+            var bestArea = Long.MAX_VALUE
+            fun walk(n: AccessibilityNodeInfo, depth: Int) {
+                if (depth > 45) return
+                n.getBoundsInScreen(r)
+                if (!r.contains(px, py)) return
+                if (n.isVisibleToUser && pred(n)) {
+                    val a = r.width().toLong() * r.height()
+                    if (a in 1 until bestArea) { bestArea = a; best = n }
+                }
+                for (i in 0 until n.childCount) n.getChild(i)?.let { walk(it, depth + 1) }
+            }
+            walk(root, 0)
+            if (best != null) return best
+        }
+        return null
+    }
+
     fun click() = main.post {
         cursor?.pulse()
-        stroke(Path().apply { moveTo(x, y) }, 40)
+        val node = try { nodeAt(x.toInt(), y.toInt()) { it.isClickable } } catch (e: Exception) { null }
+        val ok = node?.performAction(AccessibilityNodeInfo.ACTION_CLICK) ?: false
+        if (!ok) stroke(Path().apply { moveTo(x, y) }, 60)
+        Status.log(if (ok) "Clic en elemento" else "Clic por toque")
     }
 
     fun longPress() = main.post {
         cursor?.pulse()
-        stroke(Path().apply { moveTo(x, y) }, 900)
+        val node = try { nodeAt(x.toInt(), y.toInt()) { it.isLongClickable } } catch (e: Exception) { null }
+        val ok = node?.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK) ?: false
+        if (!ok) stroke(Path().apply { moveTo(x, y) }, 900)
     }
 
     fun setDragging(d: Boolean) = main.post { cursor?.dragging = d }
 
-    /** Arrastre vertical en el punto del cursor (como deslizar el dedo): dy > 0 = el contenido baja. */
-    fun scroll(dyRef: Float) = main.post {
-        val d = dyRef * sh / REF_H
-        if (abs(d) < 8f) return@post
-        val y0 = (y - d / 2f).coerceIn(2f, sh - 3f)
-        val y1 = (y + d / 2f).coerceIn(2f, sh - 3f)
-        val dur = (abs(y1 - y0) / 0.5f).toLong().coerceIn(120L, 700L) // lento = sin "lanzar" la lista
-        stroke(Path().apply { moveTo(x, y0); lineTo(x, y1) }, dur)
+    /**
+     * Arrastre en el punto del cursor (como deslizar el dedo). dx/dy en pantalla de referencia 1920x1080.
+     * Arrastrar hacia arriba o hacia la izquierda = avanzar en la lista.
+     * 1° intenta desplazar la lista que está bajo el cursor; si no hay, simula el deslizamiento.
+     */
+    fun scroll(dxRef: Float, dyRef: Float) = main.post {
+        val dx = dxRef * sw / REF_W
+        val dy = dyRef * sh / REF_H
+        if (abs(dx) < 8f && abs(dy) < 8f) return@post
+        val horizontal = abs(dx) > abs(dy)
+        val forward = if (horizontal) dx < 0 else dy < 0
+        val node = try { nodeAt(x.toInt(), y.toInt()) { it.isScrollable } } catch (e: Exception) { null }
+        val now = android.os.SystemClock.uptimeMillis()
+        if (node != null && now - lastListScroll < 450) return@post   // un salto de lista cada ~0,5 s, no 10 seguidos
+        if (node != null) lastListScroll = now
+        val ok = node?.performAction(
+            if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+        ) ?: false
+        if (!ok) {
+            val x0 = (x - dx / 2f).coerceIn(2f, sw - 3f); val x1 = (x + dx / 2f).coerceIn(2f, sw - 3f)
+            val y0 = (y - dy / 2f).coerceIn(2f, sh - 3f); val y1 = (y + dy / 2f).coerceIn(2f, sh - 3f)
+            val len = kotlin.math.hypot(x1 - x0, y1 - y0)
+            val dur = (len / 0.5f).toLong().coerceIn(120L, 700L) // lento = sin "lanzar" la lista
+            stroke(Path().apply { moveTo(x0, y0); lineTo(x1, y1) }, dur)
+        }
     }
 
     // ---------------- teclas / sistema ----------------

@@ -86,7 +86,7 @@ class GestoServer(private val ctx: android.content.Context, port: Int) : NanoWSD
                 "click" -> svc.click()
                 "long" -> svc.longPress()
                 "drag" -> svc.setDragging(m.optBoolean("on", false))
-                "scroll" -> svc.scroll(m.optDouble("dy", 0.0).toFloat())
+                "scroll" -> svc.scroll(m.optDouble("dx", 0.0).toFloat(), m.optDouble("dy", 0.0).toFloat())
                 "key" -> {
                     val k = m.optString("k")
                     if (!svc.key(k, m.optInt("n", 1))) {
