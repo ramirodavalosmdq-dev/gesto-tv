@@ -18,6 +18,14 @@ object Status {
     @Volatile var lastCommand: String = "—"
     @Volatile var lastCommandAt = 0L
 
+    private val logLines = ArrayDeque<String>()
+    fun log(msg: String) {
+        val t = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+        synchronized(logLines) { logLines.addLast("$t $msg"); while (logLines.size > 6) logLines.removeFirst() }
+        android.util.Log.i("GestoTV", msg)
+    }
+    fun logText(): String = synchronized(logLines) { logLines.joinToString("\n") }
+
     fun pin(ctx: Context): String {
         val prefs = ctx.getSharedPreferences("gesto", Context.MODE_PRIVATE)
         return prefs.getString("pin", null) ?: Random.nextInt(1000, 9999).toString().also {

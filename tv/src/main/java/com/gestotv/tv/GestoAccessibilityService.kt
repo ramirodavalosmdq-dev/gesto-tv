@@ -39,7 +39,6 @@ class GestoAccessibilityService : AccessibilityService() {
     private lateinit var wm: WindowManager
     private var cursor: CursorView? = null
     private var lp: WindowManager.LayoutParams? = null
-    private var server: GestoServer? = null
 
     private var sw = 1920
     private var sh = 1080
@@ -57,44 +56,16 @@ class GestoAccessibilityService : AccessibilityService() {
         sw = m.widthPixels; sh = m.heightPixels
         x = sw / 2f; y = sh / 2f
         addCursor()
-        startServer()
-    }
-
-    private fun startServer() {
-        if (server != null) return
-        Thread {
-            val factory = try { Tls.serverSocketFactory(this) } catch (e: Exception) {
-                Status.serverError = "Certificado: $e"; Log.e(TAG, "TLS", e); return@Thread
-            }
-            var lastError: Exception? = null
-            for (p in Status.PORTS) {
-                try {
-                    val s = GestoServer(this, p)
-                    s.makeSecure(factory, null)
-                    s.start(0, false)
-                    server = s
-                    Status.port = p
-                    Status.serverRunning = true
-                    Status.serverError = null
-                    Log.i(TAG, "Servidor en ${Status.url()}")
-                    return@Thread
-                } catch (e: Exception) {
-                    lastError = e
-                    Log.w(TAG, "Puerto $p ocupado: $e")
-                }
-            }
-            Status.serverRunning = false
-            Status.serverError = lastError?.toString() ?: "sin puertos libres"
-        }.start()
+        Status.log("Servicio de gestos conectado")
+        ServerService.start(this)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
     override fun onInterrupt() {}
 
     override fun onDestroy() {
-        try { server?.stop() } catch (_: Exception) {}
-        Status.serverRunning = false
         Status.serviceRunning = false
+        Status.log("Servicio de gestos desconectado")
         removeCursor()
         instance = null
         super.onDestroy()
@@ -178,18 +149,18 @@ class GestoAccessibilityService : AccessibilityService() {
     }
 
     // ---------------- teclas / sistema ----------------
-    fun key(k: String): Boolean {
+    fun key(k: String, n: Int = 1): Boolean {
         var ok = true
         main.post {
-            when (k) {
+            repeat(n.coerceIn(1, 20)) { when (k) {
                 "back" -> performGlobalAction(GLOBAL_ACTION_BACK)
                 "home" -> performGlobalAction(GLOBAL_ACTION_HOME)
                 "recents" -> performGlobalAction(GLOBAL_ACTION_RECENTS)
                 "vol_up" -> volume(AudioManager.ADJUST_RAISE)
                 "vol_down" -> volume(AudioManager.ADJUST_LOWER)
-                "mute" -> volume(AudioManager.ADJUST_TOGGLE_MUTE)
+                "mute" -> if (it == 0) volume(AudioManager.ADJUST_TOGGLE_MUTE)
                 else -> {}
-            }
+            } }
         }
         if (k !in setOf("back", "home", "recents", "vol_up", "vol_down", "mute")) ok = false
         return ok

@@ -31,6 +31,7 @@ class MainActivity : Activity() {
     private lateinit var clientsView: TextView
     private lateinit var qr: ImageView
     private lateinit var btnA11y: Button
+    private lateinit var logView: TextView
     private var lastQrUrl = ""
 
     private val BG = Color.rgb(11, 13, 18)
@@ -82,8 +83,12 @@ class MainActivity : Activity() {
         right.addView(text("Escaneá con la cámara del celular", 14f, MUTED).apply { gravity = Gravity.CENTER })
         root.addView(right, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
 
+        logView = text("", 12f, MUTED).apply { setPadding(0, (10 * dp).toInt(), 0, 0) }
+        left.addView(logView)
+
         setContentView(root)
         btnA11y.requestFocus()
+        ServerService.start(this)
     }
 
     override fun onResume() { super.onResume(); refresh.run() }
@@ -96,17 +101,18 @@ class MainActivity : Activity() {
             btnA11y.visibility = if (a11y) View.GONE else View.VISIBLE
             val url = Status.url()
             stepServer.text = when {
-                !a11y -> "2. Dirección para el celular: (se activa con el paso 1)"
+                !a11y && !Status.serverRunning -> "2. Dirección para el celular: (se activa con el paso 1)"
                 Status.serverRunning -> "2. Dirección para el celular: ✅"
                 Status.serverError != null -> "2. Error del servidor: ${Status.serverError}"
                 else -> "2. Preparando conexión segura…"
             }
-            urlView.text = if (a11y) url else ""
+            urlView.text = if (Status.serverRunning) url else ""
             pinView.text = "Código: ${Status.pin(this@MainActivity)}"
             val ago = if (Status.lastCommandAt > 0) " · última orden: ${Status.lastCommand}" else ""
             clientsView.text = "📱 Celulares conectados: ${Status.clients}$ago   ·   v${BuildConfigInfo.version(this@MainActivity)}"
-            if (a11y && url != lastQrUrl && url.startsWith("https")) { qr.setImageBitmap(qrBitmap(url)); lastQrUrl = url }
-            if (!a11y) { qr.setImageDrawable(null); lastQrUrl = "" }
+            if (Status.serverRunning && url != lastQrUrl && url.startsWith("https")) { qr.setImageBitmap(qrBitmap(url)); lastQrUrl = url }
+            if (!Status.serverRunning) { qr.setImageDrawable(null); lastQrUrl = "" }
+            logView.text = Status.logText()
             handler.postDelayed(this, 1000)
         }
     }

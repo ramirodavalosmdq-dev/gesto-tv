@@ -260,13 +260,13 @@ const TVLINK = (() => {
         $("tvbar").style.display = "flex"; if (mode === "pointer") $("tv").style.display = "none";
         clearInterval(pingT); pingT = setInterval(() => send({ t: "ping", id: performance.now() }), 2000);
       } else if (m.t === "badpin") { needPin = true; pill("Código ✗", "bad"); log("Código incorrecto"); }
-      else if (m.t === "pong") { rtt = Math.round(performance.now() - m.id); pill(`TV ✓ ${rtt} ms`, rtt < 60 ? "ok" : ""); }
+      else if (m.t === "pong") { rtt = Math.round(performance.now() - m.id); if (m.a11y === false) pill("TV ⚠ gestos apagados", "bad"); else pill(`TV ✓ ${rtt} ms`, rtt < 60 ? "ok" : ""); }
       else if (m.t === "info") { toast(m.msg); log("📺 " + m.msg); say(m.msg); }
     };
     ws.onclose = () => {
       const was = ok; ok = false; clearInterval(pingT);
       pill("TV ✗ reconectando", "bad"); if (was) log("📺 Se cortó la conexión");
-      setTimeout(connect, needPin ? 100 : backoff); backoff = Math.min(backoff * 2, 5000);
+      setTimeout(connect, needPin ? 100 : backoff); backoff = Math.min(backoff * 2, 3000);
     };
     ws.onerror = () => {};
   }
@@ -361,8 +361,9 @@ function analyzeHand(lm, wl) {
 
 /* ===================== AJUSTES DEL PUNTERO ===================== */
 const SPEEDS = [4.5, 3.4, 2.5, 1.8, 1.3]; // largos de mano para cruzar la pantalla, nivel 1 (lento) a 5 (rápido)
-const DEFAULTS = { zoom: 1, panX: 0, panY: 0, level: 3, accel: 0.8, minCut: 1.2, beta: 0.3, dead: 0.01, pinch: 0.30, longMs: 600 };
+const DEFAULTS = { volPts: 5, zoom: 1, panX: 0, panY: 0, level: 3, accel: 0.8, minCut: 1.2, beta: 0.3, dead: 0.01, pinch: 0.30, longMs: 600 };
 const SLIDERS = [
+  ["volPts", "Volumen por paso",    "Cuántos puntos sube o baja el volumen en cada paso del gesto L.", 1, 10, 1],
   ["accel",  "Aceleración",         "Movimiento rápido = el cursor viaja más lejos (como un mouse). 0 = lineal.",               0, 2, 0.05],
   ["minCut", "Suavizado en reposo", "Más bajo = cursor más quieto cuando apuntás (menos temblor), pero más lento en reaccionar.", 0.2, 5, 0.1],
   ["beta",   "Respuesta al moverte","Más alto = menos retraso en movimientos rápidos.",                                          0, 2, 0.05],
@@ -513,9 +514,9 @@ function endVolGrab() {
   volNet = 0;
 }
 function volumeStep(up, now) {
-  muted = false; volNet += up ? 1 : -1; updateVol();
+  muted = false; volNet += (up ? 1 : -1) * S.volPts; updateVol();
   beep(up ? 1100 : 700, 45); navigator.vibrate?.(15);
-  TVLINK.send({ t: "key", k: up ? "vol_up" : "vol_down" });
+  TVLINK.send({ t: "key", k: up ? "vol_up" : "vol_down", n: S.volPts });
   lastActivity = now;
 } // tras activar/apagar, hay que bajar la palma antes de repetir
 
