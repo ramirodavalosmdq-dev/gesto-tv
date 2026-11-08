@@ -87,7 +87,10 @@ class GestoAccessibilityService : AccessibilityService() {
         KeyBridge.start(this)
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    @Volatile private var lastScrolledAt = 0L
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) lastScrolledAt = android.os.SystemClock.uptimeMillis()
+    }
     override fun onInterrupt() {}
 
     override fun onDestroy() {
@@ -100,7 +103,7 @@ class GestoAccessibilityService : AccessibilityService() {
 
     // ---------------- cursor ----------------
     private fun addCursor() {
-        val size = (sh * 0.05f).toInt().coerceAtLeast(32)
+        val size = (sh * 0.11f).toInt().coerceAtLeast(64)
         val p = WindowManager.LayoutParams(
             size, size,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
@@ -135,6 +138,7 @@ class GestoAccessibilityService : AccessibilityService() {
     }
 
     fun showCursor(show: Boolean) = main.post {
+        cursor?.ringMode = false; cursor?.touching = false
         if (show) { x = sw / 2f; y = sh / 2f; placeCursor(true) }
         else { main.removeCallbacks(hideCursor); cursor?.visibility = View.GONE }
     }
@@ -216,14 +220,14 @@ class GestoAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun beginDrag() {
+    private fun beginDrag(sx: Float = x, sy: Float = y) {
         if (Build.VERSION.SDK_INT < 26) return
         run {
             dragActive = true; dragEnding = false; dragStroke = null
-            dragLastX = x; dragLastY = y
-            // apoyar el dedo donde está el cursor (el trazo queda "abierto" para continuar)
-            val path = Path().apply { moveTo(x, y); lineTo(x + 0.5f, y) }
-            dispatchDrag(GestureDescription.StrokeDescription(path, 0, 30, true), x + 0.5f, y)
+            dragLastX = sx; dragLastY = sy
+            // apoyar el dedo en (sx, sy) (el trazo queda "abierto" para continuar)
+            val path = Path().apply { moveTo(sx, sy); lineTo(sx + 0.5f, sy) }
+            dispatchDrag(GestureDescription.StrokeDescription(path, 0, 30, true), sx + 0.5f, sy)
             Status.log("Arrastre: dedo apoyado")
         }
     }
@@ -291,6 +295,75 @@ class GestoAccessibilityService : AccessibilityService() {
             val len = kotlin.math.hypot(x1 - x0, y1 - y0)
             val dur = (len / 0.5f).toLong().coerceIn(120L, 700L) // lento = sin "lanzar" la lista
             stroke(Path().apply { moveTo(x0, y0); lineTo(x1, y1) }, dur)
+        }
+    }
+
+    // ---------------- MODO TÁCTIL (pantalla táctil en el aire) ----------------
+    private var tActive = false
+    private var tMode = 0              // 0 = todavía es un toque, 1 = deslizando como un dedo, 2 = la app no se movía: deslizar con flechas
+    private var tStartX = 0f; private var tStartY = 0f; private var tStartT = 0L
+    private var tStrokeT = 0L
+    private var tAccX = 0f; private var tAccY = 0f; private var tLastX = 0f; private var tLastY = 0f
+
+    /** Posición exacta (0..1) que manda el celular, con la cercanía al plano (0..1). */
+    fun setAbs(nx: Float, ny: Float, p: Float, target: Boolean) = main.post {
+        val c = cursor
+        c?.ringMode = true
+        c?.progress = if (target) 0.5f else p
+        x = (nx.coerceIn(0f, 1f) * (sw - 1)); y = (ny.coerceIn(0f, 1f) * (sh - 1))
+        placeCursor(true)
+        if (tActive) touchMoved()
+    }
+
+    fun touchDown() = main.post {
+        if (tActive) return@post
+        tActive = true; tMode = 0
+        tStartX = x; tStartY = y; tStartT = android.os.SystemClock.uptimeMillis()
+        cursor?.touching = true; cursor?.pulse()
+    }
+
+    private fun touchMoved() {
+        val now = android.os.SystemClock.uptimeMillis()
+        val moved = kotlin.math.hypot(x - tStartX, y - tStartY)
+        if (tMode == 0 && moved > sh * 0.03f) {
+            // empezó a deslizar: apoyar el dedo donde empezó el toque
+            tMode = 1; tStrokeT = now; dragWanted = true; dragRestarts = 0
+            beginDrag(tStartX, tStartY)
+            Status.log("Táctil: deslizando")
+        }
+        if (tMode == 1) {
+            if (dragActive) pumpDrag()
+            // ¿la app se movió? si en 0,35 s y después de un buen tramo no hubo ningún desplazamiento, pasar a flechas
+            if (now - tStrokeT > 350 && moved > sh * 0.08f && lastScrolledAt < tStrokeT) {
+                tMode = 2
+                dragWanted = false
+                if (dragActive) { dragEnding = true; main.removeCallbacks(dragKeep); pumpDrag() }
+                tLastX = x; tLastY = y; tAccX = 0f; tAccY = 0f
+                Status.log("Táctil: esta pantalla no se desliza, sigo con flechas")
+            }
+        }
+        if (tMode == 2) {
+            tAccX += x - tLastX; tAccY += y - tLastY; tLastX = x; tLastY = y
+            val st = sh * 0.11f
+            // arrastrar hacia arriba muestra lo de abajo (= flecha abajo), como en un celular
+            while (kotlin.math.abs(tAccY) >= st && kotlin.math.abs(tAccY) >= kotlin.math.abs(tAccX)) {
+                dpad(if (tAccY < 0) "down" else "up"); tAccY -= kotlin.math.sign(tAccY) * st
+            }
+            while (kotlin.math.abs(tAccX) >= st && kotlin.math.abs(tAccX) > kotlin.math.abs(tAccY)) {
+                dpad(if (tAccX < 0) "right" else "left"); tAccX -= kotlin.math.sign(tAccX) * st
+            }
+        }
+    }
+
+    fun touchUp() = main.post {
+        if (!tActive) return@post
+        tActive = false
+        cursor?.touching = false
+        val dur = android.os.SystemClock.uptimeMillis() - tStartT
+        when (tMode) {
+            0 -> if (dur < 650) click() else longPress()
+            1 -> { dragWanted = false; if (dragActive) { dragEnding = true; main.removeCallbacks(dragKeep); pumpDrag() } }
+            else -> {}
         }
     }
 
