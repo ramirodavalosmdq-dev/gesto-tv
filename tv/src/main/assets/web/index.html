@@ -149,7 +149,7 @@ video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
     <h2>Atrás</h2>
     <div class="row"><div class="g">👍</div><div><b>Pulgar apuntando al costado, 0,5 s</b><span>Como la flecha ⬅ del control: sale de la app o vuelve a la pantalla anterior. Funciona en ACTIVO, PUNTERO y FLECHAS.</span></div></div>
     <h2>Modo flechas (el aro del control)</h2>
-    <div class="row"><div class="g">✌️</div><div><b>V con los dedos hacia arriba, quieta 0,6 s</b><span>Entra al modo flechas (con el control activo).</span></div></div>
+    <div class="row"><div class="g">✌️</div><div><b>Dos dedos juntos (índice + mayor) y mover la mano</b><span>DESLIZAR: la pantalla sigue a tu mano, como en una pantalla táctil grande. Para soltar, cambiá el gesto o bajá la mano.</span></div></div>
     <div class="row"><div class="g">✋</div><div><b>Palma abierta: mové la mano como con el volumen</b><span>Cada ~7 cm hacia arriba, abajo, izquierda o derecha = un casillero. Quieto no pasa nada. Para volver la mano al centro, hacelo despacio (no cuenta). La distancia se ajusta en ⚙️.</span></div></div>
     <div class="row"><div class="g">✊</div><div><b>Cerrar la mano = OK y salir</b><span>Entra a lo seleccionado y apaga el modo flechas.</span></div></div>
     <h2>Usar de lejos</h2>
@@ -412,9 +412,9 @@ function analyzeHand(lm, wl) {
 
 /* ===================== AJUSTES DEL PUNTERO ===================== */
 const SPEEDS = [4.5, 3.4, 2.5, 1.8, 1.3]; // largos de mano para cruzar la pantalla, nivel 1 (lento) a 5 (rápido)
-const DEFAULTS = { touchFrame: "anchor", touchSize: 3.2, pushPct: 0.10, pointerStyle: "touch", touchBy: "push", touchIn: 0.75, touchOut: 0.45, cal: null, dpadStep: 0.4, dpadSpeed: 0.9, autoOff: 20, volPts: 5, zoom: 1, panX: 0, panY: 0, level: 3, accel: 0.8, minCut: 1.2, beta: 0.3, dead: 0.01, pinch: 0.30, longMs: 600 };
+const DEFAULTS = { touchFrame: "anchor", touchSize: 5.0, pushPct: 0.10, pointerStyle: "touch", touchBy: "push", touchIn: 0.75, touchOut: 0.45, cal: null, dpadStep: 0.4, dpadSpeed: 0.9, autoOff: 20, volPts: 5, zoom: 1, panX: 0, panY: 0, level: 3, accel: 0.8, minCut: 1.2, beta: 0.3, dead: 0.01, pinch: 0.30, longMs: 600 };
 const SLIDERS = [
-  ["touchSize", "Táctil: tamaño de la pantalla invisible", "Ancho de tu pantalla invisible en largos de mano (3,2 ≈ 32 cm). Más chico = movimientos más cortos.", 2, 6, 0.1],
+  ["touchSize", "Táctil: tamaño de la pantalla invisible", "Ancho de tu pantalla invisible en largos de mano (5 ≈ 50 cm). Más grande = el punto va más lento y preciso; más chico = más rápido.", 2, 9, 0.1],
   ["pushPct", "Táctil: cuánto empujar para tocar", "Cuánto tiene que acercarse la mano a la tele (en proporción) para apoyar el dedo. 0,10 ≈ 20-25 cm desde el sillón.", 0.04, 0.25, 0.01],
   ["touchIn", "Táctil: profundidad para tocar", "Qué tan cerca del plano invisible hay que llegar para \"apoyar\" (0 = posición relajada, 1 = brazo estirado de la calibración). Más bajo = toca antes.", 0.4, 1.2, 0.05],
   ["dpadStep", "Flechas: recorrido por paso", "Cuánto tenés que mover la palma para avanzar un casillero (en largos de mano; 0,4 ≈ 4 cm). Más alto = menos sensible.", 0.3, 1.5, 0.05],
@@ -430,6 +430,8 @@ const SLIDERS = [
 ];
 let S = { ...DEFAULTS };
 try { Object.assign(S, JSON.parse(localStorage.getItem("gestotv.ptr") || "{}")); } catch {}
+// v2 (8/11): Rami probó y el punto iba muy rápido → pantalla invisible más grande (3,2 → 5 largos de mano)
+if (!(S.v >= 2)) { if (S.touchSize <= 3.2) S.touchSize = 5.0; S.v = 2; try { localStorage.setItem("gestotv.ptr", JSON.stringify(S)); } catch {} }
 if (!S.v2) { S.dpadStep = DEFAULTS.dpadStep; S.v2 = 1; }       // nuevo paso de flechas: 4 cm
 function saveS() { try { localStorage.setItem("gestotv.ptr", JSON.stringify(S)); } catch {} }
 function renderSliders() {
@@ -662,6 +664,32 @@ function presenceStep(main, now) {
   if (!PRES.last) PRES.last = pos;
 }
 
+// ---- DESLIZAR (✌️ dos dedos juntos, índice + mayor): como arrastrar con el dedo una pantalla táctil grande.
+// Mientras se ven los dos dedos, el TV "apoya el dedo" donde está el punto y lo arrastra siguiendo la mano
+// (la posición la manda presenceStep). Soltar = cambiar de gesto o bajar la mano.
+const SLIDE = { on: false, since: 0, lostAt: 0 };
+function slideEnd() { SLIDE.on = false; SLIDE.since = 0; SLIDE.lostAt = 0; TVLINK.send({ t: "sup" }); log("✌️ Soltar"); }
+function slideStep(main, now) {
+  if (main.pose === "two") {
+    SLIDE.lostAt = 0;
+    if (!SLIDE.on) {
+      if (!SLIDE.since) SLIDE.since = now;
+      if (now - SLIDE.since >= 180) {   // 0,18 s de dos dedos firmes = agarrar
+        SLIDE.on = true; TVLINK.send({ t: "sdown" }); beep(1100, 30); navigator.vibrate?.(20); log("✌️ Deslizar"); clearHold();
+      }
+    }
+    lastActivity = now;
+    return true;
+  }
+  SLIDE.since = 0;
+  if (SLIDE.on) {
+    if (!SLIDE.lostAt) SLIDE.lostAt = now;
+    if (now - SLIDE.lostAt < 160) return true;   // un cuadro dudoso no suelta
+    slideEnd();
+  }
+  return false;
+}
+
 // ---- calibración guiada (3 pasos, cada uno con la mano quieta 1,2 s) ----
 const CAL_STEPS = [
   { text: "Relajá el brazo: mano abierta frente a vos, a la altura del pecho, como en reposo. Quedate quieto.", corner: null },
@@ -820,6 +848,7 @@ function step(hands, now) {
 
   if (!hands.length && volGrab) endVolGrab();
   if (!hands.length && mode === "touch" && TOUCH.touching) { TOUCH.touching = false; TVLINK.send({ t: "tup" }); }
+  if (!hands.length && SLIDE.on) slideEnd();
   if (!hands.length) { clearHold(); trail = []; digitArmed = true; lastDigitKey = null; palmLatch = false; fistLatch = false; motPrev = null; volAcc = 0; swipeBuf = []; return; }
 
   const main = hands.reduce((a, b) => (b.size > a.size ? b : a)); // la mano más cercana
@@ -833,6 +862,8 @@ function step(hands, now) {
   const inCooldown = now < cooldownUntil;
 
   if (mode === "on") presenceStep(main, now);   // el punto se ve siempre mientras el control está encendido (cualquier gesto)
+  if (mode === "on" && slideStep(main, now)) return;   // ✌️ dos dedos juntos: deslizar la pantalla
+  if (mode !== "on" && SLIDE.on) slideEnd();
   // ---- palma quieta 2 s: activar / desactivar (desde cualquier modo)
   if (main.pose !== "open") palmLatch = false;
   if (main.pose !== "fist") fistLatch = false;
@@ -930,11 +961,7 @@ function step(hands, now) {
       return;
     }
     if (main.pose === "point") return;
-    if (main.pose === "two" && Math.hypot(mdx, mdy) / mdt < 1.5) {
-      if (holdFor("two", 600, "Modo flechas", now)) { setMode("dpad"); cooldownUntil = now + 500; sendCommand("dpad_on", "Modo flechas", "✌️ Modo flechas"); }
-      return;
-    }
-    if (main.pose === "two") return;
+    if (main.pose === "two") return;   // (antes: modo flechas. Pedido de Rami: dos dedos = deslizar, ver slideStep)
     if (main.pose === "A") {
       if (holdFor("A", 600, "Modo apps", now)) { setMode("apps"); cooldownUntil = now + 900; digitArmed = false; sendCommand("mode_apps", "Modo apps. Elegí con los dedos", "🅰️ Modo apps"); }
       return;

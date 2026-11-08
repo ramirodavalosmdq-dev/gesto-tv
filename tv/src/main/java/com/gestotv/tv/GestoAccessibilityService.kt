@@ -342,6 +342,7 @@ class GestoAccessibilityService : AccessibilityService() {
         x = (nx.coerceIn(0f, 1f) * (sw - 1)); y = (ny.coerceIn(0f, 1f) * (sh - 1))
         placeCursor(true)
         if (tActive) touchMoved()
+        if (sActive) slideMoved()
     }
 
     fun touchDown() = main.post {
@@ -393,6 +394,111 @@ class GestoAccessibilityService : AccessibilityService() {
             0 -> if (dur < 650) click() else longPress()
             1 -> { dragWanted = false; if (dragActive) { dragEnding = true; main.removeCallbacks(dragKeep); pumpDrag() } }
             else -> {}
+        }
+    }
+
+    // ---------------- DESLIZAR (✌️ dos dedos juntos) ----------------
+    // La pantalla sigue a la mano como si la arrastraras con el dedo en una pantalla táctil grande.
+    // 1° "dedo real" (Injector por la depuración del TV): toques de pantalla táctil verdaderos, siguen a la mano en vivo.
+    // 2° si la app no se mueve con toques (o no hay dedo real): desplaza la lista bajo el punto (Accesibilidad).
+    // 3° último recurso, solo si no hay ninguna lista desplazable: flechas (apps hechas solo para el control).
+    // Todo queda anotado en el registro, para saber qué método anduvo en cada app.
+    private var sActive = false
+    private var sMode = 0                 // 1 = dedo real · 2 = lista por Accesibilidad · 3 = flechas
+    private var sStartX = 0f; private var sStartY = 0f; private var sStartT = 0L
+    private var sLastX = 0f; private var sLastY = 0f; private var sAccX = 0f; private var sAccY = 0f
+    private var sLastAction = 0L
+    private var sMovedOk = false
+    private var sApp = ""
+    private var sDownSent = false         // el dedo real se apoya recién cuando la mano empieza a moverse (si no, sería un clic)
+
+    fun slideDown() = main.post {
+        if (sActive) return@post
+        sActive = true; sMovedOk = false
+        sStartX = x; sStartY = y; sStartT = android.os.SystemClock.uptimeMillis()
+        sLastX = x; sLastY = y; sAccX = 0f; sAccY = 0f
+        sApp = try { rootInActiveWindow?.packageName?.toString() ?: "?" } catch (_: Exception) { "?" }
+        cursor?.touching = true; cursor?.pulse()
+        sDownSent = false
+        sMode = if (KeyBridge.touchReady) 1 else 2
+        if (!KeyBridge.touchReady) KeyBridge.startTouch(this)
+        Status.log("Deslizar en $sApp: " + if (sMode == 1) "dedo real" else "lista (sin dedo real)")
+    }
+
+    private fun slideMoved() {
+        val now = android.os.SystemClock.uptimeMillis()
+        val moved = kotlin.math.hypot(x - sStartX, y - sStartY)
+        if (sMode == 1) {
+            if (!sDownSent) {
+                if (moved < sh * 0.02f) return
+                if (!KeyBridge.touch(this, 'd', sStartX, sStartY)) { sMode = 2; sLastX = x; sLastY = y; return }
+                sDownSent = true; sStartT = now
+            }
+            KeyBridge.touch(this, 'm', x, y)
+            if (lastScrolledAt > sStartT) sMovedOk = true
+            // ¿la app no se mueve con toques? tras un buen tramo sin ningún desplazamiento, pasar a la lista
+            if (!sMovedOk && now - sStartT > 600 && moved > sh * 0.10f) {
+                KeyBridge.touch(this, 'u', x, y)
+                sMode = 2; sLastX = x; sLastY = y; sAccX = 0f; sAccY = 0f
+                Status.log("Deslizar en $sApp: no se movió con el dedo real, sigo moviendo la lista")
+            }
+            return
+        }
+        // modos 2 y 3: por pasos. Mano hacia arriba = el contenido sube = mostrar lo de abajo (como en el celular)
+        sAccX += x - sLastX; sAccY += y - sLastY; sLastX = x; sLastY = y
+        val stepPx = sh * 0.12f
+        if (now - sLastAction < 220) return
+        val dir = when {
+            kotlin.math.abs(sAccY) >= stepPx && kotlin.math.abs(sAccY) >= kotlin.math.abs(sAccX) -> if (sAccY < 0) "down" else "up"
+            kotlin.math.abs(sAccX) >= stepPx -> if (sAccX < 0) "right" else "left"
+            else -> return
+        }
+        if (dir == "down" || dir == "up") sAccY -= kotlin.math.sign(sAccY) * stepPx else sAccX -= kotlin.math.sign(sAccX) * stepPx
+        sLastAction = now
+        if (sMode == 2 && scrollList(dir)) return
+        if (sMode == 2) { sMode = 3; Status.log("Deslizar en $sApp: no hay lista desplazable, uso flechas") }
+        dpad(dir)
+    }
+
+    /** Desplaza la lista que está bajo el punto (o la más grande de la pantalla) un paso en esa dirección. */
+    private fun scrollList(dir: String): Boolean {
+        val node = try {
+            nodeAt(x.toInt(), y.toInt()) { it.isScrollable } ?: biggestScrollable()
+        } catch (e: Exception) { null } ?: return false
+        val directional = when (dir) {
+            "down" -> AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN
+            "up" -> AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_UP
+            "right" -> AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_RIGHT
+            else -> AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_LEFT
+        }
+        if (node.actionList.any { it.id == directional.id } && node.performAction(directional.id)) return true
+        val fwd = dir == "down" || dir == "right"
+        return node.performAction(if (fwd) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+    }
+
+    private fun biggestScrollable(): AccessibilityNodeInfo? {
+        val root = rootInActiveWindow ?: return null
+        val r = Rect()
+        var best: AccessibilityNodeInfo? = null; var bestA = 0L
+        fun walk(n: AccessibilityNodeInfo, d: Int) {
+            if (d > 45) return
+            if (n.isScrollable && n.isVisibleToUser) { n.getBoundsInScreen(r); val a = r.width().toLong() * r.height(); if (a > bestA) { bestA = a; best = n } }
+            for (i in 0 until n.childCount) n.getChild(i)?.let { walk(it, d + 1) }
+        }
+        walk(root, 0)
+        return best
+    }
+
+    fun slideUp() = main.post {
+        if (!sActive) return@post
+        sActive = false
+        cursor?.touching = false
+        if (sMode == 1 && sDownSent) {
+            KeyBridge.touch(this, 'u', x, y)
+            val t0 = sStartT
+            main.postDelayed({
+                Status.log("Deslizar en $sApp (dedo real): " + if (lastScrolledAt > t0) "la pantalla se movió ✅" else "sin aviso de movimiento")
+            }, 600)
         }
     }
 

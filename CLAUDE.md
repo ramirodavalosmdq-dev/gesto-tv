@@ -63,8 +63,17 @@ tv/src/main/assets/web/index.html  ──WSS:9443──▶  ServerService (servi
   empujar = `tdown`, retirar = `tup`. En el TV: toque corto = clic (accesibilidad, si no toque); apoyado y moviendo =
   trazo continuo (`continueStroke`); si no llega `TYPE_VIEW_SCROLLED`, convierte el arrastre en flechas.
   Alternativa: esquinas calibradas (3 pasos) y tocar con pinza.
-- ✌️ (V hacia arriba): **modo flechas** como la perilla del volumen (cada ~4 cm de movimiento decidido de la palma
-  abierta = 1 casillero; movimientos lentos no cuentan); ✊ cerrar la mano = OK y salir.
+- ✌️ **Dos dedos juntos (índice + mayor) = DESLIZAR** (pedido de Rami 8/11: "no quiero flechas, quiero deslizar la
+  pantalla"): `sdown` → el punto arrastra → `sup` al cambiar de gesto. En el TV (`slideDown/slideMoved/slideUp`):
+  1° **dedo real** = `Injector.java` lanzado por KeyBridge (`app_process` con permiso de shell, inyecta MotionEvent de
+  pantalla táctil, técnica scrcpy) — el dedo se apoya recién al moverse 2% (si no, sería clic); 2° si en 0,6 s no hubo
+  `TYPE_VIEW_SCROLLED`: acciones de scroll de Accesibilidad sobre la lista bajo el punto; 3° flechas solo si no hay lista.
+  El registro anota qué método anduvo en cada app ("Deslizar en <paquete>: ..."). Test: `test_deslizar.py`.
+  (El modo flechas ✌️ quieto ya no se entra con la V; el código `dpad` queda.)
+- **Diagnóstico 8/11 (registro real)**: el arrastre por Accesibilidad (`dispatchGesture/continueStroke`) este TV lo
+  CANCELA en milisegundos (12/12 intentos, 5 reintentos en <80 ms) → por eso nunca anduvo el arrastre. En 25 min de
+  pruebas: 0 clics y solo 12 "empujar" detectados → la profundidad con 1 cámara no sirve para tocar.
+  Punto muy rápido → `touchSize` 3,2 → 5 (migración `S.v=2`).
 - 👍 Pulgar al costado 0,5 s: Atrás. ✊ Puño 0,7 s: salir de puntero/táctil.
 - Botón 🔍 zoom 1x–3x (recorta la imagen para ver la mano de lejos; el ancla se borra al cambiar el zoom).
 
