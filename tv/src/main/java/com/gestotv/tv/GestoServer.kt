@@ -88,6 +88,9 @@ class GestoServer(private val ctx: android.content.Context, port: Int) : NanoWSD
                     else { toast("📱 Celular conectado"); Status.log("Celular conectado") }
                 } else {
                     reply(JSONObject().put("t", "badpin"))
+                    // el código solo se ve en la pantalla del TV (lo ven los que están en la sala): avisar encima de lo que se esté mirando
+                    toast("📱 Un celular quiere conectarse · Código: ${Status.pin(ctx)}")
+                    Status.log("Celular pidió conectarse (código incorrecto o vacío)")
                     try { close(WebSocketFrame.CloseCode.PolicyViolation, "pin", false) } catch (_: IOException) {}
                 }
                 return
