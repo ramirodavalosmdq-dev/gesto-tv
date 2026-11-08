@@ -282,6 +282,9 @@ function setHold(frac, label) {
 /* ===================== ENLACE CON EL TV =====================
    La página la sirve la app del TV (https://IP:8443). Ahí abrimos un WebSocket
    seguro al mismo TV. Si la página se abre desde otro lado, funciona en modo simulador. */
+// MODO ESTÉREO: abrir esta página con ?cam=2 en un SEGUNDO celular, al otro lado del TV. Ese celular no hace
+// gestos: solo manda los puntos de la mano (lm2). El TV se los pasa a este celular, que cruza las dos vistas.
+const CAM2 = new URLSearchParams(location.search).get("cam") === "2";
 const TVLINK = (() => {
   const enabled = location.protocol === "https:" && /^\d+\.\d+\.\d+\.\d+$/.test(location.hostname);
   let ws = null, ok = false, needPin = false, backoff = 500, pingT = null, rtt = null;
@@ -299,7 +302,7 @@ const TVLINK = (() => {
     if (needPin || !getPin()) askPin();
     pill("TV ⏳");
     ws = new WebSocket(`wss://${location.host}/ws`);
-    ws.onopen = () => ws.send(JSON.stringify({ t: "hello", pin: getPin() }));
+    ws.onopen = () => ws.send(JSON.stringify({ t: "hello", pin: getPin(), role: CAM2 ? "cam2" : "main" }));
     ws.onmessage = e => {
       let m; try { m = JSON.parse(e.data); } catch { return; }
       if (m.t === "ok") {
@@ -309,6 +312,7 @@ const TVLINK = (() => {
       } else if (m.t === "badpin") { needPin = true; pill("Código ✗", "bad"); log("Código incorrecto"); }
       else if (m.t === "pong") { rtt = Math.round(performance.now() - m.id); if (m.a11y === false) pill("TV ⚠ gestos apagados", "bad"); else pill(`TV ✓ ${rtt} ms`, rtt < 60 ? "ok" : ""); }
       else if (m.t === "info") { toast(m.msg); log("📺 " + m.msg); say(m.msg); }
+      else if (m.t === "lm2") stereoIn(m);
     };
     ws.onclose = () => {
       const was = ok; ok = false; clearInterval(pingT);
@@ -412,9 +416,10 @@ function analyzeHand(lm, wl) {
 
 /* ===================== AJUSTES DEL PUNTERO ===================== */
 const SPEEDS = [4.5, 3.4, 2.5, 1.8, 1.3]; // largos de mano para cruzar la pantalla, nivel 1 (lento) a 5 (rápido)
-const DEFAULTS = { touchFrame: "anchor", touchSize: 5.0, pushPct: 0.10, pointerStyle: "touch", touchBy: "push", touchIn: 0.75, touchOut: 0.45, cal: null, dpadStep: 0.4, dpadSpeed: 0.9, autoOff: 20, volPts: 5, zoom: 1, panX: 0, panY: 0, level: 3, accel: 0.8, minCut: 1.2, beta: 0.3, dead: 0.01, pinch: 0.30, longMs: 600 };
+const DEFAULTS = { touchFrame: "anchor", touchSize: 5.0, pushPct: 0.10, pushStereo: 0.08, pointerStyle: "touch", touchBy: "push", touchIn: 0.75, touchOut: 0.45, cal: null, dpadStep: 0.4, dpadSpeed: 0.9, autoOff: 20, volPts: 5, zoom: 1, panX: 0, panY: 0, level: 3, accel: 0.8, minCut: 1.2, beta: 0.3, dead: 0.01, pinch: 0.30, longMs: 600 };
 const SLIDERS = [
   ["touchSize", "Táctil: tamaño de la pantalla invisible", "Ancho de tu pantalla invisible en largos de mano (5 ≈ 50 cm). Más grande = el punto va más lento y preciso; más chico = más rápido.", 2, 9, 0.1],
+  ["pushStereo", "Estéreo: cuánto empujar para tocar", "Con dos cámaras: cuánto tiene que avanzar el dedo hacia la tele para tocar (0,08 ≈ 15 cm desde 2 m). Más bajo = toque más sensible.", 0.03, 0.2, 0.01],
   ["pushPct", "Táctil: cuánto empujar para tocar", "Cuánto tiene que acercarse la mano a la tele (en proporción) para apoyar el dedo. 0,10 ≈ 20-25 cm desde el sillón.", 0.04, 0.25, 0.01],
   ["touchIn", "Táctil: profundidad para tocar", "Qué tan cerca del plano invisible hay que llegar para \"apoyar\" (0 = posición relajada, 1 = brazo estirado de la calibración). Más bajo = toca antes.", 0.4, 1.2, 0.05],
   ["dpadStep", "Flechas: recorrido por paso", "Cuánto tenés que mover la palma para avanzar un casillero (en largos de mano; 0,4 ≈ 4 cm). Más alto = menos sensible.", 0.3, 1.5, 0.05],
@@ -617,7 +622,9 @@ function touchStep(main, now) {
   // profundidad
   const d = palmPx(main);
   TOUCH.D = TOUCH.D === null ? d : TOUCH.D * 0.7 + d * 0.3;
-  const p = (S.touchFrame !== "corners" && ANCHOR)
+  const sq = stereoDepth(main);                       // con dos cámaras: profundidad real del dedo (no depende de girar la mano)
+  const p = sq !== null ? sq / S.pushStereo
+    : (S.touchFrame !== "corners" && ANCHOR)
     ? (TOUCH.D / ANCHOR.size - 1) / S.pushPct          // 0 = donde activaste, 1 = empujaste lo configurado
     : (TOUCH.D - S.cal.dh) / (S.cal.dt - S.cal.dh);
   // ¿tocando?
@@ -688,6 +695,40 @@ function slideStep(main, now) {
     slideEnd();
   }
   return false;
+}
+
+// ---- ESTÉREO: dos cámaras = profundidad real del dedo (como los dos ojos).
+// Disparidad = diferencia de la posición horizontal de la punta del índice entre las dos imágenes (en cuadro completo).
+// Al acercar el dedo a la tele la disparidad cambia; el signo depende de qué lado esté cada celular, y se aprende solo
+// (correlación con el tamaño aparente de la palma, que crece al acercarse). Sin medir nada ni calibrar.
+const STEREO = { r: null, at: 0, corr: 0, prevD: null, prevPalm: null, okLog: false };
+let LASTC = null;   // último recorte de la imagen (zoom), para pasar a coordenadas de cuadro completo
+function fullX(x) { const vw = video.videoWidth || 1; return LASTC ? (LASTC.sx + x * LASTC.cw) / vw : x; }
+function stereoIn(m) {
+  if (!m.pts) { STEREO.r = null; return; }
+  STEREO.r = m; STEREO.at = performance.now();
+  if (!STEREO.okLog) { STEREO.okLog = true; log("📷📷 Llegan datos de la cámara 2"); $("readout").dataset.st = "1"; }
+}
+function stereoFresh() { return STEREO.r && performance.now() - STEREO.at < 160; }
+function stereoD(main) { return stereoFresh() ? fullX(main.lm[8].x) - STEREO.r.pts[8][0] : null; }
+function stereoDepth(main) {
+  if (!ANCHOR || ANCHOR.d === null || ANCHOR.d === undefined || Math.abs(ANCHOR.d) < 0.02) return null;   // muy poca separación entre vistas
+  const d = stereoD(main); if (d === null) return null;
+  const pp = palmPx(main);
+  if (STEREO.prevD !== null) STEREO.corr = STEREO.corr * 0.995 + (d - STEREO.prevD) * (pp - STEREO.prevPalm);
+  STEREO.prevD = d; STEREO.prevPalm = pp;
+  const sgn = STEREO.corr >= 0 ? 1 : -1;
+  return sgn * (d - ANCHOR.d) / Math.abs(ANCHOR.d);   // 0 = donde activaste; + = más cerca de la tele
+}
+// celular "cámara 2": manda la mano más grande ~30 veces por segundo, en coordenadas de cuadro completo
+let cam2Last = 0;
+function cam2Send(res, now) {
+  if (now - cam2Last < 30) return; cam2Last = now;
+  const L = res.landmarks; if (!L.length) { TVLINK.send({ t: "lm2" }); return; }
+  let best = L[0], bs = 0;
+  for (const lm of L) { const s = Math.hypot(lm[0].x - lm[9].x, lm[0].y - lm[9].y); if (s > bs) { bs = s; best = lm; } }
+  const vh = video.videoHeight || 1;
+  TVLINK.send({ t: "lm2", pts: best.map(p => [+fullX(p.x).toFixed(4), +((LASTC ? (LASTC.sy + p.y * LASTC.ch) / vh : p.y)).toFixed(4)]) });
 }
 
 // ---- calibración guiada (3 pasos, cada uno con la mano quieta 1,2 s) ----
@@ -879,7 +920,8 @@ function step(hands, now) {
     }
     if (done) {
       if (mode === "off") {
-        ANCHOR = { x: main.lm[8].x, y: main.lm[8].y, size: palmPx(main) };   // ← centro de tu pantalla invisible
+        ANCHOR = { x: main.lm[8].x, y: main.lm[8].y, size: palmPx(main), d: stereoD(main) };   // ← centro de tu pantalla invisible
+        if (ANCHOR.d !== null) log("📷📷 Estéreo: profundidad anclada");
         setMode("on"); sendCommand("activate", TVLINK.ok ? "" : "Enlace gestual activado", "✋ Enlace gestual activado");   // con TV conectado, la voz la pone el TV
         TVLINK.send({ t: "linked" });   // el TV muestra la animación "Enlace gestual activado" (y oculta la ruedita)
       }
@@ -1153,7 +1195,8 @@ async function init() {
     try { await navigator.wakeLock?.request("screen"); } catch {}
     $("start").style.display = "none";
     setMode("off");
-    say("Listo. Mostrá la palma dos segundos para activar.");
+    if (CAM2) { $("modeText").textContent = "CÁMARA 2 (estéreo)"; say("Cámara dos lista. Dejala fija, mirando hacia vos."); }
+    else say("Listo. Mostrá la palma dos segundos para activar.");
     TVLINK.connect();
     requestAnimationFrame(loop);
   } catch (e) {
@@ -1169,13 +1212,20 @@ function loop() {
     const c = cropRect();
     if (src.width !== c.cw || src.height !== c.ch) { src.width = c.cw; src.height = c.ch; }
     sctx.drawImage(video, c.sx, c.sy, c.cw, c.ch, 0, 0, c.cw, c.ch);
+    LASTC = c;
     const res = landmarker.detectForVideo(src, now);
+    if (CAM2) {   // segunda cámara: no interpreta gestos, solo manda la mano
+      draw(res); cam2Send(res, now);
+      $("readout").textContent = (TVLINK.ok ? "📷 CÁMARA 2 · enviando al TV" : "📷 CÁMARA 2 · conectando…") + (res.landmarks.length ? " · mano ✓" : " · sin mano");
+      frames++; if (now - fpsT > 1000) { $("fps").textContent = frames + " fps"; frames = 0; fpsT = now; }
+      requestAnimationFrame(loop); return;
+    }
     const hands = res.landmarks.map((lm, i) => analyzeHand(lm, res.worldLandmarks?.[i]));
     draw(res);
     step(hands, now);
-    $("readout").textContent = hands.length
+    $("readout").textContent = (stereoFresh() ? "📷📷 Estéreo   |   " : "") + (hands.length
       ? hands.map((h, i) => `Mano ${i + 1}: ${POSE_TXT[h.pose]} · ${h.count} dedos`).join("   |   ")
-      : "Sin mano a la vista";
+      : "Sin mano a la vista");
     if (mode === "pointer" && hands.length) $("readout").textContent += `   |   pinza ${PTR.ratio.toFixed(2)} (clic < ${S.pinch})${PTR.pinched ? " ●" : ""}`;
     frames++;
     if (now - fpsT > 1000) { $("fps").textContent = frames + " fps"; frames = 0; fpsT = now; }

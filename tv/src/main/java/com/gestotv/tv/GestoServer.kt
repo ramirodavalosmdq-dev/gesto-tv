@@ -33,15 +33,22 @@ class GestoServer(private val ctx: android.content.Context, port: Int) : NanoWSD
 
     override fun openWebSocket(handshake: NanoHTTPD.IHTTPSession): NanoWSD.WebSocket = PhoneSocket(handshake)
 
+    /** Celulares conectados. MODO ESTÉREO: el celular "cam2" (segunda cámara, al otro lado del TV) solo manda
+     *  los puntos de la mano (lm2) y el TV se los reenvía al celular principal, que cruza las dos vistas. */
+    private val socks = java.util.concurrent.CopyOnWriteArraySet<PhoneSocket>()
+
     private inner class PhoneSocket(h: NanoHTTPD.IHTTPSession) : NanoWSD.WebSocket(h) {
-        private var authed = false
+        var authed = false
+        var role = "main"
 
         override fun onOpen() {}
 
         override fun onClose(code: WebSocketFrame.CloseCode?, reason: String?, initiatedByRemote: Boolean) {
+            socks.remove(this)
             if (authed) {
                 Status.clients = (Status.clients - 1).coerceAtLeast(0)
-                toast("📱 Celular desconectado"); Status.log("Celular desconectado")
+                if (role == "cam2") { toast("📷 Cámara 2 desconectada"); Status.log("Cámara 2 desconectada") }
+                else { toast("📱 Celular desconectado"); Status.log("Celular desconectado") }
             }
         }
 
@@ -64,9 +71,12 @@ class GestoServer(private val ctx: android.content.Context, port: Int) : NanoWSD
             if (!authed) {
                 if (t == "hello" && m.optString("pin") == Status.pin(ctx)) {
                     authed = true
+                    role = if (m.optString("role") == "cam2") "cam2" else "main"
+                    socks.add(this)
                     Status.clients += 1
                     reply(JSONObject().put("t", "ok").put("version", BuildConfigInfo.version(ctx)))
-                    toast("📱 Celular conectado"); Status.log("Celular conectado")
+                    if (role == "cam2") { toast("📷 Cámara 2 conectada (modo estéreo)"); Status.log("Cámara 2 conectada (estéreo)") }
+                    else { toast("📱 Celular conectado"); Status.log("Celular conectado") }
                 } else {
                     reply(JSONObject().put("t", "badpin"))
                     try { close(WebSocketFrame.CloseCode.PolicyViolation, "pin", false) } catch (_: IOException) {}
@@ -74,6 +84,11 @@ class GestoServer(private val ctx: android.content.Context, port: Int) : NanoWSD
                 return
             }
 
+            if (t == "lm2") {   // segunda cámara → reenviar tal cual al/los celular(es) principal(es)
+                val txt = frame.textPayload
+                for (s in socks) if (s !== this && s.authed && s.role != "cam2") try { s.send(txt) } catch (_: Exception) {}
+                return
+            }
             if (t != "move" && t != "ping") { Status.lastCommand = t + (m.optString("k").takeIf { it.isNotEmpty() }?.let { " $it" } ?: ""); Status.lastCommandAt = System.currentTimeMillis() }
 
             if (t == "ping") { reply(JSONObject().put("t", "pong").put("id", m.opt("id")).put("a11y", Status.serviceRunning)); return }

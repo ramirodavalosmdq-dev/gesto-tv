@@ -44,7 +44,7 @@ tv/src/main/assets/web/index.html  ──WSS:9443──▶  ServerService (servi
 `pos{x,y,p,target?}` (absoluto 0..1, p = cercanía al plano 0..1) · `tdown` / `tup` (toque de pantalla táctil) ·
 `linked` (animación + voz "Enlace gestual activado" en el TV) · `click` · `long` · `drag{on}` · `scroll{dx,dy}` · `dpad{dir: up|down|left|right|center}` ·
 `key{k: back|home|recents|vol_up|vol_down|mute|ch_up|ch_down, n}` · `app{name}` · `apps` · `cursor{show}` ·
-`digits{v}`. TV → celular: `info{msg}`.
+`digits{v}` · `sdown`/`sup` (deslizar) · `lm2{pts}` (cámara 2, se reenvía al principal). TV → celular: `info{msg}`, `lm2`.
 
 ## Gestos actuales (página del celular)
 - ✋ Palma quieta 2 s: activa/apaga. Al activar, el TV muestra la animación HUD "Enlace gestual activado" (`LinkView.kt`) y lo dice una voz femenina por el parlante del TV (`Voz.kt`, TextToSpeech, canal multimedia).
@@ -105,8 +105,13 @@ cualquier tele sin instalar app.
 3. Canal ± y número de canal vía KeyBridge (KEYCODE_CHANNEL_UP/DOWN, dígitos).
 4. Que la pantalla invisible siga a la persona sin re-activar (detección de cuerpo/hombro) y "quién manda" con
    varias personas (el que hace la palma toma el control).
-5. **Modo estéreo**: dos celulares a los costados del TV, triangulación del dedo (calibración automática moviendo
-   la mano, sincronización por tiempo). Requiere un segundo Android.
+5. **Modo estéreo — PRIMERA VERSIÓN HECHA (8/11, sin probar en real)**: el 2.º celular abre `https://IP:9443/?cam=2`
+   (rol `cam2` en `hello`), manda `lm2{pts:[[x,y]×21]}` (cuadro completo, ~30/s); el TV (`GestoServer`) lo reenvía al
+   celular principal. El principal calcula la disparidad horizontal de la punta del índice (`stereoD`), la ancla al
+   activar con la palma (`ANCHOR.d`) y usa `stereoDepth` = cambio relativo de disparidad (signo aprendido solo por
+   correlación con el tamaño de la palma) como profundidad para tocar (`S.pushStereo` 0,08) en vez del tamaño de la
+   palma. Test: `test_estereo.py` (toca solo con disparidad, palma fija). Pendiente: probar con 2 celulares reales,
+   ajustar umbral; después, triangulación completa (x/y 3D) y calibración.
 6. Más adelante: app nativa en el celular, Samsung (Tizen), producto con cámara de profundidad (p. ej. OAK-D Lite).
 
 ## Cómo se compila y publica
