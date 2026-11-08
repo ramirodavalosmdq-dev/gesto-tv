@@ -438,12 +438,8 @@ class GestoAccessibilityService : AccessibilityService() {
             }
             KeyBridge.touch(this, 'm', x, y)
             if (lastScrolledAt > sStartT) sMovedOk = true
-            // ¿la app no se mueve con toques? tras un buen tramo sin ningún desplazamiento, pasar a la lista
-            if (!sMovedOk && now - sStartT > 600 && moved > sh * 0.10f) {
-                KeyBridge.touch(this, 'u', x, y)
-                sMode = 2; sLastX = x; sLastY = y; sAccX = 0f; sAccY = 0f
-                Status.log("Deslizar en $sApp: no se movió con el dedo real, sigo moviendo la lista")
-            }
+            // El dedo real NO se levanta a mitad de camino (registro 8/11 19:34: el inicio de Google TV no avisa que se
+            // movió, y cortar a los 0,6 s arruinaba cada deslizamiento). Se mantiene apoyado hasta que el celular suelta.
             return
         }
         // modos 2 y 3: por pasos. Mano hacia arriba = el contenido sube = mostrar lo de abajo (como en el celular)
@@ -499,7 +495,8 @@ class GestoAccessibilityService : AccessibilityService() {
             KeyBridge.touch(this, 'u', x, y)
             val t0 = sStartT
             main.postDelayed({
-                Status.log("Deslizar en $sApp (dedo real): " + if (lastScrolledAt > t0) "la pantalla se movió ✅" else "sin aviso de movimiento")
+                val dur = android.os.SystemClock.uptimeMillis() - t0
+                Status.log("Deslizar en $sApp (dedo real, ${dur} ms, ${(kotlin.math.hypot(x - sStartX, y - sStartY) / sh * 100).toInt()}% de pantalla): " + if (lastScrolledAt > t0) "la app avisó que se movió ✅" else "la app no avisa (puede haberse movido igual)")
             }, 600)
         }
     }

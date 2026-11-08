@@ -209,7 +209,8 @@ const CFG = {
   swipeHand: 1.6,           // largos de mano de recorrido horizontal para cambiar de canal
   numberAutoMs: 2500,       // confirma el canal solo si no marcás otro dígito en este tiempo
   activateHoldMs: 2000,     // palma quieta para activar/desactivar
-  autoOffMs: 10000,         // apagado automático sin gestos
+  autoOffMs: 10000,
+  channelSwipe: false,      // barrido de mano = canal ± (apagado hasta que el TV lo soporte)         // apagado automático sin gestos
   modeTimeoutMs: 8000,      // vuelta desde modo número/apps
   fistHoldMs: 600,
   modeEnterHoldMs: 800,
@@ -712,7 +713,7 @@ function cam2Send(res, now) {
 //   · moverlos → DESLIZAR (sdown … sup)
 //   · empujarlos hacia la tele (sin moverse) → CLIC donde está el punto
 // La V abierta NO cuenta: tienen que estar pegados (distancia entre puntas chica).
-const TWO = { since: 0, start: null, state: "idle", pushed: false, D: null, p: 0, lostAt: 0, still0: 0, calLatch: false };
+const TWO = { since: 0, start: null, state: "idle", pushed: false, D: null, p: 0, lostAt: 0, still0: 0, calLatch: false, endAt: -1e9 };
 function twoTogether(main) {
   if (main.pose !== "two") return false;
   const gap = d2(main.lm[8], main.lm[12]), len = d2(main.lm[5], main.lm[8]) || 1;
@@ -725,6 +726,7 @@ function twoDepth(main) {
   return ANCHOR ? (TWO.D / ANCHOR.size - 1) / S.pushPct : 0;
 }
 function twoEnd() {
+  if (TWO.state === "slide" || TWO.since) TWO.endAt = performance.now();   // al soltar se suele cerrar la mano: no es silencio
   if (TWO.state === "slide") { TVLINK.send({ t: "sup" }); log("✌️ Soltar"); }
   TWO.state = "idle"; TWO.since = 0; TWO.start = null; TWO.pushed = false; TWO.D = null; TWO.p = 0; TWO.lostAt = 0; TWO.still0 = 0; TWO.calLatch = false;
 }
@@ -1015,8 +1017,8 @@ function step(hands, now) {
       return;
     }
 
-    if (!inCooldown && flatish) {
-      // CANAL: barrido horizontal rápido
+    if (CFG.channelSwipe && !inCooldown && flatish) {
+      // CANAL: barrido horizontal rápido (APAGADO: en el TV todavía no cambia de canal y se disparaba sin querer al mover la mano)
       swipeBuf.push({ dx: mdx, dy: mdy, t: now });
       swipeBuf = swipeBuf.filter(p => now - p.t < 500);
       const sx = swipeBuf.reduce((a, p) => a + p.dx, 0), sy = swipeBuf.reduce((a, p) => a + p.dy, 0);
@@ -1028,6 +1030,7 @@ function step(hands, now) {
     if (inCooldown) return;
 
     // MUTE: el puño alterna silencio / sonido. Hay que abrir la mano antes de repetir.
+    if (main.pose === "fist" && !fistLatch && now - TWO.endAt < 1800) { clearHold(); return; }   // registro 8/11: 10 silencios sin querer al soltar los dos dedos
     if (main.pose === "fist" && !fistLatch) {
       if (holdFor("fist", CFG.fistHoldMs, muted ? "Sonido" : "Silencio", now)) {
         muted = !muted; fistLatch = true; cooldownUntil = now + 600;
