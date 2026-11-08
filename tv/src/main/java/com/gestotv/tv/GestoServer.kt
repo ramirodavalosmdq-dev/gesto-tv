@@ -19,6 +19,14 @@ class GestoServer(private val ctx: android.content.Context, port: Int) : NanoWSD
     private fun toast(msg: String) = main.post { android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_SHORT).show() }
 
     override fun serveHttp(session: NanoHTTPD.IHTTPSession): NanoHTTPD.Response {
+        if (session.uri == "/registro") {   // descargar el registro permanente (con el código del TV)
+            if (session.parameters["pin"]?.firstOrNull() != Status.pin(ctx))
+                return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.FORBIDDEN, "text/plain; charset=utf-8", "Agregá ?pin=CODIGO (el de 4 números del TV)")
+            val f = Status.logFile()
+            val old = f?.let { java.io.File(it.parentFile, "registro-anterior.txt") }
+            val txt = (old?.takeIf { it.exists() }?.readText() ?: "") + (f?.takeIf { it.exists() }?.readText() ?: "(registro vacío)")
+            return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.OK, "text/plain; charset=utf-8", txt).apply { addHeader("Cache-Control", "no-store") }
+        }
         val path = when (session.uri) { "/", "/index.html" -> "web/index.html"; else -> null }
             ?: return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.NOT_FOUND, "text/plain", "No encontrado")
         return try {
@@ -40,6 +48,7 @@ class GestoServer(private val ctx: android.content.Context, port: Int) : NanoWSD
     private inner class PhoneSocket(h: NanoHTTPD.IHTTPSession) : NanoWSD.WebSocket(h) {
         var authed = false
         var role = "main"
+        private var lastPosTrace = 0L
 
         override fun onOpen() {}
 
@@ -89,6 +98,11 @@ class GestoServer(private val ctx: android.content.Context, port: Int) : NanoWSD
                 for (s in socks) if (s !== this && s.authed && s.role != "cam2") try { s.send(txt) } catch (_: Exception) {}
                 return
             }
+            if (t == "pos") {   // una muestra por segundo del punto, para ver en el registro si sigue a la mano
+                val now = System.currentTimeMillis()
+                if (now - lastPosTrace > 1000) { lastPosTrace = now; Status.trace("punto x=${m.optDouble("x").let { "%.2f".format(it) }} y=${m.optDouble("y").let { "%.2f".format(it) }} p=${m.optDouble("p")}") }
+            }
+            if (t != "move" && t != "ping" && t != "pos") Status.trace("orden: " + m.toString().take(160) + if (role == "cam2") " (cámara 2)" else "")
             if (t != "move" && t != "ping") { Status.lastCommand = t + (m.optString("k").takeIf { it.isNotEmpty() }?.let { " $it" } ?: ""); Status.lastCommandAt = System.currentTimeMillis() }
 
             if (t == "ping") { reply(JSONObject().put("t", "pong").put("id", m.opt("id")).put("a11y", Status.serviceRunning)); return }

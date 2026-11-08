@@ -73,6 +73,7 @@ class GestoAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         Status.installCrashLog(this)
+        Status.initFile(this)
         instance = this
         Status.serviceRunning = true
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
@@ -164,6 +165,7 @@ class GestoAccessibilityService : AccessibilityService() {
         try { wm.addView(v, p); linkView = v } catch (e: Exception) { Log.e(TAG, "Sin animación de enlace", e) }
         // la voz entra cuando el texto termina de "decodificarse" en pantalla
         main.postDelayed({ try { Voz.decir("Enlace gestual activado") } catch (_: Throwable) {} }, 450)
+        Status.trace("Enlace gestual activado (animación + voz)")
     }
 
     fun showCursor(show: Boolean) = main.post {

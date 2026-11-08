@@ -84,6 +84,7 @@ class ServerService : Service() {
     override fun onCreate() {
         super.onCreate()
         Status.installCrashLog(this)
+        Status.initFile(this)
         goForeground()
         watch.postDelayed(watchdog, 5000)
         try {
