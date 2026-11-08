@@ -155,7 +155,7 @@ video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
     <h2>Usar de lejos</h2>
     <div class="row"><div class="g">🔍</div><div><b>Botón de zoom (1x a 3x)</b><span>Desde el sillón usá 2x o 2,5x. Arrastrá la imagen con el dedo para que tu torso y tus manos queden en el centro. Queda guardado. Tip: la cámara trasera suele ver mejor de lejos.</span></div></div>
     <h2>Activar / desactivar</h2>
-    <div class="row"><div class="g">✋</div><div><b>Palma abierta quieta 2 segundos</b><span>Activa el control. Repetilo para apagarlo. Se apaga solo tras 10 s sin gestos.</span></div></div>
+    <div class="row"><div class="g">✋</div><div><b>Palma abierta quieta 2 segundos</b><span>Activa el control: "Enlace gestual activado". Mientras está encendido, el punto te sigue en la tele. Repetilo para apagarlo; también se apaga solo si no ves gestos un rato.</span></div></div>
     <h2>Con el control activo</h2>
     <div class="row"><div class="g">🤙</div><div><b>Volumen: hacé una L (pulgar + índice) y sostenela</b><span>Suena un clic: agarraste el volumen. Subí la mano = más, bajala = menos (un paso cada ~5 cm). Soltá la L para terminar.</span></div></div>
     <div class="row"><div class="g">✊</div><div><b>Puño cerrado (sostenido)</b><span>Silencio. Otro puño: vuelve el sonido. Abrí la mano entre uno y otro.</span></div></div>
@@ -644,6 +644,24 @@ function touchStep(main, now) {
   lastActivity = now;
 }
 
+// ---- PUNTO DE PRESENCIA (regla de Rami): mientras el control está encendido, el punto se ve SIEMPRE en el TV
+// y sigue a tu mano (punta del índice, relativa al ANCLA). Es la señal de "Co-Vi te está siguiendo".
+// Con la mano fuera de cuadro el TV lo esconde solo a los pocos segundos; al apagar se borra.
+const PRES = { lastSend: 0, last: null };
+function presenceStep(main, now) {
+  if (!TVLINK.ok || now - PRES.lastSend < 33) return;
+  if (!(ANCHOR && S.touchFrame !== "corners") && !S.cal) return;
+  PRES.lastSend = now;
+  const t = now / 1000, tip = main.lm[8];
+  const ux = TOUCH.fx.filter(tip.x * 10, t, S.minCut, S.beta) / 10;
+  const uy = TOUCH.fy.filter(tip.y * 10, t, S.minCut, S.beta) / 10;
+  const pos = touchPos({ x: ux, y: uy });
+  TVLINK.send({ t: "pos", x: +pos.x.toFixed(4), y: +pos.y.toFixed(4), p: 0 });
+  // mover el punto a propósito cuenta como uso (no se apaga mientras elegís); la mano quieta, no
+  if (PRES.last && Math.hypot(pos.x - PRES.last.x, pos.y - PRES.last.y) > 0.04) { lastActivity = now; PRES.last = pos; }
+  if (!PRES.last) PRES.last = pos;
+}
+
 // ---- calibración guiada (3 pasos, cada uno con la mano quieta 1,2 s) ----
 const CAL_STEPS = [
   { text: "Relajá el brazo: mano abierta frente a vos, a la altura del pecho, como en reposo. Quedate quieto.", corner: null },
@@ -792,7 +810,7 @@ function detectSwipe(now) {
 
 function step(hands, now) {
   // ---- timeouts
-  if (mode === "on" && now - lastActivity > S.autoOff * 1000) { setMode("off"); say("Control apagado"); log("Apagado automático"); }
+  if (mode === "on" && now - lastActivity > S.autoOff * 1000) { setMode("off"); say("Control apagado"); log("Apagado automático"); TVLINK.send({ t: "cursor", show: false }); }
   if (mode === "dpad" && now - lastActivity > Math.max(30000, S.autoOff * 1000)) { setMode("on"); say("Flechas apagadas"); log("Modo flechas apagado por tiempo"); }
   if ((mode === "touch" || mode === "calib") && now - lastActivity > Math.max(30000, S.autoOff * 1000)) { setMode("on"); say("Pantalla táctil apagada"); log("Pantalla táctil apagada por tiempo"); TVLINK.send({ t: "cursor", show: false }); }
   if (mode === "pointer" && now - lastActivity > Math.max(30000, S.autoOff * 1000)) { setMode("on"); say("Puntero apagado"); log("Puntero apagado por tiempo"); }
@@ -814,6 +832,7 @@ function step(hands, now) {
   if (mode !== "off") lastActivity = now;
   const inCooldown = now < cooldownUntil;
 
+  if (mode === "on") presenceStep(main, now);   // el punto se ve siempre mientras el control está encendido (cualquier gesto)
   // ---- palma quieta 2 s: activar / desactivar (desde cualquier modo)
   if (main.pose !== "open") palmLatch = false;
   if (main.pose !== "fist") fistLatch = false;

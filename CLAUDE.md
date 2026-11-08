@@ -50,6 +50,10 @@ tv/src/main/assets/web/index.html  ──WSS:9443──▶  ServerService (servi
 - ✋ Palma quieta 2 s: activa/apaga. Al activar, el TV muestra la animación HUD "Enlace gestual activado" (`LinkView.kt`) y lo dice una voz femenina por el parlante del TV (`Voz.kt`, TextToSpeech, canal multimedia).
   Marca: el producto se llama **Co-Vi TV** ("control virtual"), slogan "Todo al alcance de tu mano". **Al activar, ese punto queda como centro de la pantalla invisible** (ANCLA;
   ruedita verde en el celular + anillo que se cierra en el centro del TV). Apagado automático (ajustable, 20 s).
+- **Regla de Rami (8/11): mientras el control está encendido, el punto se ve SIEMPRE en el TV** y sigue a la mano
+  (punta del índice relativa al ANCLA, `presenceStep` → `pos{p:0}`), con cualquier gesto. Es la señal de "te estoy
+  siguiendo". Mover el punto cuenta como actividad (no se apaga mientras elegís); al apagar (palma o automático)
+  se borra. Para ver una película, el control ya está apagado. Test: `tools/tests/test_punto_presencia.py`.
 - 🤙 L + subir/bajar: volumen (perilla, 5 puntos por paso). ✊ Puño: mute/sonido (alterna).
 - 👉/👈 barrido rápido con mano estirada: canal ± (en el TV todavía no implementado: falta tecla CHANNEL por KeyBridge).
 - 🤘 modo número (dígitos con dedos, se confirma solo) — en el TV todavía no implementado.
