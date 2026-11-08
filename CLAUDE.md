@@ -134,6 +134,9 @@ gh run watch                            # esperar el build del último push
 gh release download --pattern gesto-tv.apk --clobber
 adb install -r gesto-tv.apk             # instala directo, sin Downloader
 adb logcat -s GestoTV                   # registro interno en vivo mientras Rami prueba gestos
+curl -k "https://192.168.100.2:9443/registro?pin=CODIGO" -o registro-tv.txt   # REGISTRO PERMANENTE (v0.1.19+):
+#   el TV graba siempre (registro.txt en Android/data/com.gestotv.tv/files): órdenes, punto 1/s, deslizar, errores.
+#   Usar esto en vez de dejar logcat corriendo (la notebook se quedó sin memoria el 8/11).
 adb shell settings get secure enabled_accessibility_services   # ¿está activo el servicio?
 ```
 Si `adb connect` falla: en el TV, Opciones de desarrollador → Depuración por red / USB activadas.
