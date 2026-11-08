@@ -3,3 +3,5 @@ build/
 local.properties
 *.iml
 .idea/
+tools/mock-tv/node_modules/
+tools/mock-tv/*.pem

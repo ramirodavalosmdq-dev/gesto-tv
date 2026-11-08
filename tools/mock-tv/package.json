@@ -1,0 +1,1 @@
+{ "name": "gesto-tv-mock", "private": true, "dependencies": { "ws": "8.18.0" } }
