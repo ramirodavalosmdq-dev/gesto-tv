@@ -81,6 +81,7 @@ class GestoAccessibilityService : AccessibilityService() {
         sw = m.widthPixels; sh = m.heightPixels
         x = sw / 2f; y = sh / 2f
         addCursor()
+        try { Voz.init(this) } catch (e: Throwable) { Log.w(TAG, "Sin voz", e) }
         Status.log("Servicio de gestos conectado")
         Status.reportLastCrash(this)
         ServerService.start(this)
@@ -97,6 +98,7 @@ class GestoAccessibilityService : AccessibilityService() {
         Status.serviceRunning = false
         Status.log("Servicio de gestos desconectado")
         removeCursor()
+        try { Voz.cerrar() } catch (_: Throwable) {}
         instance = null
         super.onDestroy()
     }
@@ -135,6 +137,33 @@ class GestoAccessibilityService : AccessibilityService() {
             main.removeCallbacks(hideCursor)
             main.postDelayed(hideCursor, 8000)
         }
+    }
+
+    // ---------------- "Enlace gestual activado" ----------------
+    private var linkView: LinkView? = null
+
+    /** Animación a pantalla completa cuando se completa la ruedita verde (ver LinkView). No toca ni roba el foco. */
+    fun showLinked() = main.post {
+        main.removeCallbacks(hideCursor); cursor?.visibility = View.GONE   // la ruedita del cursor da paso a la animación
+        linkView?.let { try { wm.removeView(it) } catch (_: Exception) {} }
+        val p = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        )
+        p.gravity = Gravity.TOP or Gravity.START
+        var v: LinkView? = null
+        v = LinkView(this) {
+            v?.let { try { wm.removeView(it) } catch (_: Exception) {} }
+            if (linkView === v) linkView = null
+        }
+        try { wm.addView(v, p); linkView = v } catch (e: Exception) { Log.e(TAG, "Sin animación de enlace", e) }
+        // la voz entra cuando el texto termina de "decodificarse" en pantalla
+        main.postDelayed({ try { Voz.decir("Enlace gestual activado") } catch (_: Throwable) {} }, 450)
     }
 
     fun showCursor(show: Boolean) = main.post {

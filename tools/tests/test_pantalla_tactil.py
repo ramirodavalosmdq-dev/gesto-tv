@@ -24,7 +24,7 @@ async def main():
         got = await pg.evaluate("fetch('/__got').then(r=>r.json())")
         ring = [g['p'] for g in got if g['t']=='pos'][:12]
         print("ruedita en el TV (p):", ring)
-        i = next(i for i,g in enumerate(got) if g['t']=='cursor' and g.get('show')==False)
+        i = next(i for i,g in enumerate(got) if g['t']=='linked'); print('linked ✔ (animación Enlace gestual)')
         rest = got[i+1:]
         seq=[]
         for g in rest:

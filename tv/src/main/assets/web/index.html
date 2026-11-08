@@ -253,7 +253,7 @@ function beep(freq = 880, ms = 90) {
   } catch {}
 }
 function say(text) {
-  if (!voiceOn || !("speechSynthesis" in window)) return;
+  if (!text || !voiceOn || !("speechSynthesis" in window)) return;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = "es-AR"; u.rate = 1.1;
@@ -830,8 +830,8 @@ function step(hands, now) {
     if (done) {
       if (mode === "off") {
         ANCHOR = { x: main.lm[8].x, y: main.lm[8].y, size: palmPx(main) };   // ← centro de tu pantalla invisible
-        setMode("on"); sendCommand("activate", "Control activado", "✋ Control activado");
-        setTimeout(() => { if (mode === "on") TVLINK.send({ t: "cursor", show: false }); }, 900);
+        setMode("on"); sendCommand("activate", TVLINK.ok ? "" : "Enlace gestual activado", "✋ Enlace gestual activado");   // con TV conectado, la voz la pone el TV
+        TVLINK.send({ t: "linked" });   // el TV muestra la animación "Enlace gestual activado" (y oculta la ruedita)
       }
       else { setMode("off"); sendCommand("deactivate", "Control apagado", "✋ Control apagado"); }
       cooldownUntil = now + 1500; palmLatch = true;

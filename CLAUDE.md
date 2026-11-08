@@ -10,7 +10,7 @@ Visión de producto (de Rami): una caja con **una cámara inteligente** (a futur
 del TV, triangulando el dedo en 3D) + una app en el TV. El corazón: una **pantalla táctil invisible** frente al
 usuario — el punto azul aparece en el TV donde apunta, y "tocás" empujando la mano. Regla de diseño n.º 1:
 **la pantalla invisible sigue a la persona** (se arma donde activa con la palma, esté en el sillón o en la mesa).
-Pendiente: Rami eligió un nombre comercial pero todavía no lo dijo.
+Nombre comercial: **Co-Vi TV** (siglas de control virtual). Slogan: "Todo al alcance de tu mano". (El paquete Android sigue siendo com.gestotv.tv para que se instale encima.)
 
 ## Hardware real de prueba
 - TV **TCL "Smart TV Pro", Google TV / Android TV 11** (API 30), IP en la casa `192.168.100.2`.
@@ -42,12 +42,13 @@ tv/src/main/assets/web/index.html  ──WSS:9443──▶  ServerService (servi
 ## Protocolo celular → TV (JSON por WebSocket)
 `hello{pin}`→`ok|badpin` · `ping{id}`→`pong{id,a11y}` · `move{dx,dy}` (pantalla ref. 1920×1080, relativo) ·
 `pos{x,y,p,target?}` (absoluto 0..1, p = cercanía al plano 0..1) · `tdown` / `tup` (toque de pantalla táctil) ·
-`click` · `long` · `drag{on}` · `scroll{dx,dy}` · `dpad{dir: up|down|left|right|center}` ·
+`linked` (animación + voz "Enlace gestual activado" en el TV) · `click` · `long` · `drag{on}` · `scroll{dx,dy}` · `dpad{dir: up|down|left|right|center}` ·
 `key{k: back|home|recents|vol_up|vol_down|mute|ch_up|ch_down, n}` · `app{name}` · `apps` · `cursor{show}` ·
 `digits{v}`. TV → celular: `info{msg}`.
 
 ## Gestos actuales (página del celular)
-- ✋ Palma quieta 2 s: activa/apaga. **Al activar, ese punto queda como centro de la pantalla invisible** (ANCLA;
+- ✋ Palma quieta 2 s: activa/apaga. Al activar, el TV muestra la animación HUD "Enlace gestual activado" (`LinkView.kt`) y lo dice una voz femenina por el parlante del TV (`Voz.kt`, TextToSpeech, canal multimedia).
+  Marca: el producto se llama **Co-Vi TV** ("control virtual"), slogan "Todo al alcance de tu mano". **Al activar, ese punto queda como centro de la pantalla invisible** (ANCLA;
   ruedita verde en el celular + anillo que se cierra en el centro del TV). Apagado automático (ajustable, 20 s).
 - 🤙 L + subir/bajar: volumen (perilla, 5 puntos por paso). ✊ Puño: mute/sonido (alterna).
 - 👉/👈 barrido rápido con mano estirada: canal ± (en el TV todavía no implementado: falta tecla CHANNEL por KeyBridge).

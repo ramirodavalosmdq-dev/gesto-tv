@@ -83,6 +83,7 @@ class GestoServer(private val ctx: android.content.Context, port: Int) : NanoWSD
             try { when (t) {
                 "move" -> svc.move(m.optDouble("dx", 0.0).toFloat(), m.optDouble("dy", 0.0).toFloat())
                 "cursor" -> svc.showCursor(m.optBoolean("show", true))
+                "linked" -> svc.showLinked()
                 "click" -> svc.click()
                 "pos" -> svc.setAbs(m.optDouble("x", 0.5).toFloat(), m.optDouble("y", 0.5).toFloat(), m.optDouble("p", 0.0).toFloat(), m.optBoolean("target", false))
                 "tdown" -> svc.touchDown()
