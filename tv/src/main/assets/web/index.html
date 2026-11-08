@@ -169,7 +169,8 @@ video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
     <div class="row"><div class="g">🅰️</div><div><b>"A": índice y medio apuntando hacia abajo</b><span>Entra al modo apps.</span></div></div>
     <div class="row"><div class="g">☝️</div><div><b>1 Netflix · 2 Flow · 3 Disney+ · 4 YouTube</b><span>Sostené los dedos 1 s. Puño = cancelar.</span></div></div>
     <h2>Pantalla táctil en el aire</h2>
-    <div class="row"><div class="g">☝️</div><div><b>Índice solo, 0,6 s (con el control activo)</b><span>Entra a la pantalla táctil. La primera vez te guía una calibración de 3 pasos: mano relajada, esquina de arriba a la izquierda y esquina de abajo a la derecha, con el brazo estirado.</span></div></div>
+    <div class="row"><div class="g">🟢</div><div><b>Al activar con la palma, elegís dónde va tu pantalla</b><span>Poné la mano donde querés el CENTRO de tu pantalla invisible (en el sillón, en la mesa…). La ruedita verde se llena en el celular y en el centro del TV: ese punto queda como centro.</span></div></div>
+    <div class="row"><div class="g">☝️</div><div><b>Índice solo, 0,6 s</b><span>Entra a la pantalla táctil, sin calibrar nada: se arma alrededor del punto donde activaste. (Si preferís, en ajustes podés usar esquinas calibradas.)</span></div></div>
     <div class="row"><div class="g">🔵</div><div><b>Flotando</b><span>El punto azul aparece donde apuntás. El anillo se cierra a medida que te acercás a la pantalla invisible.</span></div></div>
     <div class="row"><div class="g">👉</div><div><b>Empujá la mano hacia la tele = apoyar el dedo</b><span>Tocar y soltar rápido = clic. Apoyado y moviendo = deslizar (si la app no se desliza, se mueve con flechas). Retirá la mano = levantar el dedo.</span></div></div>
     <div class="row"><div class="g">✊</div><div><b>Puño 0,7 s</b><span>Sale de la pantalla táctil. En ajustes podés elegir tocar con la pinza en vez de empujar, o volver al mouse clásico.</span></div></div>
@@ -189,8 +190,9 @@ video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
     <p style="color:var(--muted);font-size:14px">Se guardan en este celular. Probá en modo puntero y ajustá hasta que se sienta natural.</p>
     <div id="modeOpts">
       <div class="row2"><span>☝️ El índice entra a:</span><button data-k="pointerStyle" data-v="touch">Pantalla táctil</button><button data-k="pointerStyle" data-v="mouse">Mouse</button></div>
+      <div class="row2"><span>Tu pantalla invisible:</span><button data-k="touchFrame" data-v="anchor">Donde activo con la palma</button><button data-k="touchFrame" data-v="corners">Esquinas calibradas</button></div>
       <div class="row2"><span>Tocar la pantalla con:</span><button data-k="touchBy" data-v="push">Empujar la mano</button><button data-k="touchBy" data-v="pinch">Pinza</button></div>
-      <button id="btnCalib" style="align-self:flex-start;border-color:#2563eb">📐 Calibrar pantalla táctil</button>
+      <button id="btnCalib" style="align-self:flex-start;border-color:#2563eb">📐 Calibrar esquinas (opcional)</button>
       <span id="calInfo" style="color:var(--muted);font-size:13px"></span>
     </div>
     <div id="sliders"></div>
@@ -268,7 +270,10 @@ function log(text) {
   $("log").prepend(d);
   while ($("log").children.length > 30) $("log").lastChild.remove();
 }
+let holdColorKey = null;
 function setHold(frac, label) {
+  const green = hold.key === "palm" && mode === "off";
+  if (green !== holdColorKey) { $("holdBar").style.stroke = green ? "#22c55e" : ""; holdColorKey = green; }
   $("hold").style.opacity = frac > 0 ? 1 : 0;
   $("holdBar").style.strokeDashoffset = 414.7 * (1 - Math.min(1, frac));
   $("holdLabel").textContent = frac > 0 ? label : "";
@@ -407,8 +412,10 @@ function analyzeHand(lm, wl) {
 
 /* ===================== AJUSTES DEL PUNTERO ===================== */
 const SPEEDS = [4.5, 3.4, 2.5, 1.8, 1.3]; // largos de mano para cruzar la pantalla, nivel 1 (lento) a 5 (rápido)
-const DEFAULTS = { pointerStyle: "touch", touchBy: "push", touchIn: 0.75, touchOut: 0.45, cal: null, dpadStep: 0.4, dpadSpeed: 0.9, autoOff: 20, volPts: 5, zoom: 1, panX: 0, panY: 0, level: 3, accel: 0.8, minCut: 1.2, beta: 0.3, dead: 0.01, pinch: 0.30, longMs: 600 };
+const DEFAULTS = { touchFrame: "anchor", touchSize: 3.2, pushPct: 0.10, pointerStyle: "touch", touchBy: "push", touchIn: 0.75, touchOut: 0.45, cal: null, dpadStep: 0.4, dpadSpeed: 0.9, autoOff: 20, volPts: 5, zoom: 1, panX: 0, panY: 0, level: 3, accel: 0.8, minCut: 1.2, beta: 0.3, dead: 0.01, pinch: 0.30, longMs: 600 };
 const SLIDERS = [
+  ["touchSize", "Táctil: tamaño de la pantalla invisible", "Ancho de tu pantalla invisible en largos de mano (3,2 ≈ 32 cm). Más chico = movimientos más cortos.", 2, 6, 0.1],
+  ["pushPct", "Táctil: cuánto empujar para tocar", "Cuánto tiene que acercarse la mano a la tele (en proporción) para apoyar el dedo. 0,10 ≈ 20-25 cm desde el sillón.", 0.04, 0.25, 0.01],
   ["touchIn", "Táctil: profundidad para tocar", "Qué tan cerca del plano invisible hay que llegar para \"apoyar\" (0 = posición relajada, 1 = brazo estirado de la calibración). Más bajo = toca antes.", 0.4, 1.2, 0.05],
   ["dpadStep", "Flechas: recorrido por paso", "Cuánto tenés que mover la palma para avanzar un casillero (en largos de mano; 0,4 ≈ 4 cm). Más alto = menos sensible.", 0.3, 1.5, 0.05],
   ["dpadSpeed", "Flechas: rapidez mínima", "Movimientos más lentos que esto no cuentan (así podés volver la mano al centro despacio sin mover la selección).", 0.3, 2.5, 0.1],
@@ -575,6 +582,9 @@ function pointerStep(h, now) {
    El dedo índice se ubica de forma ABSOLUTA dentro de ese rectángulo -> mismo punto en el TV.
    Profundidad: el tamaño aparente de la palma crece cuando la mano se acerca a la cámara (que está en el TV).
    p = 0 en la posición relajada, p = 1 con el brazo estirado; al pasar touchIn se "apoya" el dedo. */
+/* ANCLA: al encender con la palma, el punto donde la tenías queda como CENTRO de tu pantalla invisible.
+   Tamaño y profundidad se miden en "largos de tu mano" de ese momento: sirve igual desde la mesa o el sillón. */
+let ANCHOR = null;   // { x, y (punta del índice, 0..1), size (palma en px), ar }
 const TOUCH = { fx: new OneEuro(), fy: new OneEuro(), D: null, touching: false, hist: [], enter: 0, lastSend: 0 };
 function palmPx(h) {
   const w = src.width || 1280, ht = src.height || 720;
@@ -582,6 +592,12 @@ function palmPx(h) {
   return Math.max(d2(P(0), P(9)), d2(P(5), P(17)) * 1.3);
 }
 function touchPos(tip) {
+  if (S.touchFrame !== "corners" && ANCHOR) {
+    const w = src.width || 1280, ht = src.height || 720;
+    const W = S.touchSize, Hh = W * 9 / 16;                                   // en largos de mano
+    const ux = -(tip.x - ANCHOR.x) * w / ANCHOR.size, uy = (tip.y - ANCHOR.y) * ht / ANCHOR.size;
+    return { x: Math.max(0, Math.min(1, 0.5 + ux / W)), y: Math.max(0, Math.min(1, 0.5 + uy / Hh)) };
+  }
   const c = S.cal;
   return { x: Math.max(0, Math.min(1, (tip.x - c.tl.x) / (c.br.x - c.tl.x))), y: Math.max(0, Math.min(1, (tip.y - c.tl.y) / (c.br.y - c.tl.y))) };
 }
@@ -599,7 +615,9 @@ function touchStep(main, now) {
   // profundidad
   const d = palmPx(main);
   TOUCH.D = TOUCH.D === null ? d : TOUCH.D * 0.7 + d * 0.3;
-  const p = (TOUCH.D - S.cal.dh) / (S.cal.dt - S.cal.dh);
+  const p = (S.touchFrame !== "corners" && ANCHOR)
+    ? (TOUCH.D / ANCHOR.size - 1) / S.pushPct          // 0 = donde activaste, 1 = empujaste lo configurado
+    : (TOUCH.D - S.cal.dh) / (S.cal.dt - S.cal.dh);
   // ¿tocando?
   let want;
   if (S.touchBy === "pinch") want = TOUCH.touching ? main.pinchR < 0.42 : (main.pinchR < 0.28 && !main.idxCurled);
@@ -802,8 +820,19 @@ function step(hands, now) {
   if (mode !== "dpad" && mode !== "calib" && mode !== "touch" && main.pose === "open" && palmLatch) return;
   const palmFree = mode !== "dpad" && mode !== "calib" && mode !== "touch";   // en estos modos la palma se usa para otra cosa
   if (palmFree && main.pose === "open" && hands.length === 1 && isStill()) {   // en flechas la palma se usa de joystick
-    if (holdFor("palm", CFG.activateHoldMs, mode === "off" ? "Activando…" : "Apagando…", now)) {
-      if (mode === "off") { setMode("on"); sendCommand("activate", "Control activado", "✋ Control activado"); }
+    const activating = mode === "off";
+    const done = holdFor("palm", CFG.activateHoldMs, activating ? "Ubicando tu pantalla…" : "Apagando…", now);
+    if (activating && !done && now - (step.tvRingAt || 0) > 60) {
+      // la misma ruedita se ve cerrándose en el centro del TV
+      step.tvRingAt = now;
+      TVLINK.send({ t: "pos", x: 0.5, y: 0.5, p: +Math.min(1, (now - hold.since) / CFG.activateHoldMs).toFixed(2) });
+    }
+    if (done) {
+      if (mode === "off") {
+        ANCHOR = { x: main.lm[8].x, y: main.lm[8].y, size: palmPx(main) };   // ← centro de tu pantalla invisible
+        setMode("on"); sendCommand("activate", "Control activado", "✋ Control activado");
+        setTimeout(() => { if (mode === "on") TVLINK.send({ t: "cursor", show: false }); }, 900);
+      }
       else { setMode("off"); sendCommand("deactivate", "Control apagado", "✋ Control apagado"); }
       cooldownUntil = now + 1500; palmLatch = true;
     }
@@ -873,8 +902,9 @@ function step(hands, now) {
       if (S.pointerStyle === "touch") {
         if (holdFor("point", 600, "Pantalla táctil", now)) {
           cooldownUntil = now + 400;
-          const calOk = S.cal && S.cal.zoom === S.zoom && S.cal.panX === S.panX && S.cal.panY === S.panY;
-          if (!calOk) { if (S.cal) say("Cambió el zoom o el encuadre, calibremos de nuevo."); startCalib(); }
+          const calOk = S.touchFrame !== "corners" ? !!ANCHOR : (S.cal && S.cal.zoom === S.zoom && S.cal.panX === S.panX && S.cal.panY === S.panY);
+          if (!calOk && S.touchFrame !== "corners") { say("Apagá y volvé a activar con la palma donde quieras tu pantalla."); }
+          else if (!calOk) { if (S.cal) say("Cambió el zoom o el encuadre, calibremos de nuevo."); startCalib(); }
           else { setMode("touch"); sendCommand("touch_on", "Pantalla táctil", "🖐️ Pantalla táctil"); }
         }
       } else if (holdFor("point", 600, "Modo puntero", now)) { setMode("pointer"); cooldownUntil = now + 400; sendCommand("pointer_on", "Modo puntero", "🖱️ Modo puntero"); }
@@ -1038,7 +1068,7 @@ function cropRect() {
   const cw = Math.round(vw / z), ch = Math.round(vh / z), mx = (vw - cw) / 2, my = (vh - ch) / 2;
   return { sx: Math.round(mx + S.panX * mx), sy: Math.round(my + S.panY * my), cw, ch };
 }
-$("btnZoom").onclick = () => { S.zoom = ZOOMS[(ZOOMS.indexOf(S.zoom) + 1) % ZOOMS.length]; if (S.zoom === 1) { S.panX = 0; S.panY = 0; } saveS(); applyZoom(); };
+$("btnZoom").onclick = () => { ANCHOR = null; S.zoom = ZOOMS[(ZOOMS.indexOf(S.zoom) + 1) % ZOOMS.length]; if (S.zoom === 1) { S.panX = 0; S.panY = 0; } saveS(); applyZoom(); };
 let panStart = null;
 canvas.addEventListener("pointerdown", e => { if (nativeZoom || S.zoom === 1) return; panStart = { x: e.clientX, y: e.clientY, px: S.panX, py: S.panY }; canvas.setPointerCapture(e.pointerId); });
 canvas.addEventListener("pointermove", e => {
