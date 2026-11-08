@@ -149,13 +149,13 @@ video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
     <h2>Atrás</h2>
     <div class="row"><div class="g">👍</div><div><b>Pulgar apuntando al costado, 0,5 s</b><span>Como la flecha ⬅ del control: sale de la app o vuelve a la pantalla anterior. Funciona en ACTIVO, PUNTERO y FLECHAS.</span></div></div>
     <h2>Modo flechas (el aro del control)</h2>
-    <div class="row"><div class="g">✌️</div><div><b>Dos dedos juntos (índice + mayor) y mover la mano</b><span>DESLIZAR: la pantalla sigue a tu mano, como en una pantalla táctil grande. Para soltar, cambiá el gesto o bajá la mano.</span></div></div>
+    <div class="row"><div class="g">✌️</div><div><b>Dos dedos juntos (índice + mayor pegados, pulgar sobre los otros dos)</b><span>Es "el dedo" de Co-Vi. QUIETOS 1,5 s al encender: ubica tu pantalla (ruedita verde). MOVERLOS: desliza. EMPUJARLOS hacia la tele: clic. Quietos 3 s: muda la pantalla a donde estás.</span></div></div>
     <div class="row"><div class="g">✋</div><div><b>Palma abierta: mové la mano como con el volumen</b><span>Cada ~7 cm hacia arriba, abajo, izquierda o derecha = un casillero. Quieto no pasa nada. Para volver la mano al centro, hacelo despacio (no cuenta). La distancia se ajusta en ⚙️.</span></div></div>
     <div class="row"><div class="g">✊</div><div><b>Cerrar la mano = OK y salir</b><span>Entra a lo seleccionado y apaga el modo flechas.</span></div></div>
     <h2>Usar de lejos</h2>
     <div class="row"><div class="g">🔍</div><div><b>Botón de zoom (1x a 3x)</b><span>Desde el sillón usá 2x o 2,5x. Arrastrá la imagen con el dedo para que tu torso y tus manos queden en el centro. Queda guardado. Tip: la cámara trasera suele ver mejor de lejos.</span></div></div>
     <h2>Activar / desactivar</h2>
-    <div class="row"><div class="g">✋</div><div><b>Palma abierta quieta 2 segundos</b><span>Activa el control: "Enlace gestual activado". Mientras está encendido, el punto te sigue en la tele. Repetilo para apagarlo; también se apaga solo si no ves gestos un rato.</span></div></div>
+    <div class="row"><div class="g">✋</div><div><b>Palma abierta quieta 2 segundos</b><span>Enciende Co-Vi: "Enlace gestual activado". Después ubicá tu pantalla con dos dedos juntos quietos; desde ahí el punto te sigue en la tele. Repetilo para apagarlo; también se apaga solo si no ves gestos un rato.</span></div></div>
     <h2>Con el control activo</h2>
     <div class="row"><div class="g">🤙</div><div><b>Volumen: hacé una L (pulgar + índice) y sostenela</b><span>Suena un clic: agarraste el volumen. Subí la mano = más, bajala = menos (un paso cada ~5 cm). Soltá la L para terminar.</span></div></div>
     <div class="row"><div class="g">✊</div><div><b>Puño cerrado (sostenido)</b><span>Silencio. Otro puño: vuelve el sonido. Abrí la mano entre uno y otro.</span></div></div>
@@ -656,45 +656,20 @@ function touchStep(main, now) {
 // ---- PUNTO DE PRESENCIA (regla de Rami): mientras el control está encendido, el punto se ve SIEMPRE en el TV
 // y sigue a tu mano (punta del índice, relativa al ANCLA). Es la señal de "Co-Vi te está siguiendo".
 // Con la mano fuera de cuadro el TV lo esconde solo a los pocos segundos; al apagar se borra.
-const PRES = { lastSend: 0, last: null };
+const PRES = { lastSend: 0, last: null, cur: null, hist: [] };
 function presenceStep(main, now) {
   if (!TVLINK.ok || now - PRES.lastSend < 33) return;
-  if (!(ANCHOR && S.touchFrame !== "corners") && !S.cal) return;
+  if (!ANCHOR && !(S.touchFrame === "corners" && S.cal)) return;   // sin pantalla calibrada no hay punto
   PRES.lastSend = now;
   const t = now / 1000, tip = main.lm[8];
   const ux = TOUCH.fx.filter(tip.x * 10, t, S.minCut, S.beta) / 10;
   const uy = TOUCH.fy.filter(tip.y * 10, t, S.minCut, S.beta) / 10;
   const pos = touchPos({ x: ux, y: uy });
-  TVLINK.send({ t: "pos", x: +pos.x.toFixed(4), y: +pos.y.toFixed(4), p: 0 });
+  PRES.cur = pos; PRES.hist.push({ t: now, ...pos }); while (PRES.hist.length && now - PRES.hist[0].t > 400) PRES.hist.shift();
+  TVLINK.send({ t: "pos", x: +pos.x.toFixed(4), y: +pos.y.toFixed(4), p: TWO.state === "slide" ? 1 : +Math.max(0, Math.min(1, TWO.p || 0)).toFixed(2) });
   // mover el punto a propósito cuenta como uso (no se apaga mientras elegís); la mano quieta, no
   if (PRES.last && Math.hypot(pos.x - PRES.last.x, pos.y - PRES.last.y) > 0.04) { lastActivity = now; PRES.last = pos; }
   if (!PRES.last) PRES.last = pos;
-}
-
-// ---- DESLIZAR (✌️ dos dedos juntos, índice + mayor): como arrastrar con el dedo una pantalla táctil grande.
-// Mientras se ven los dos dedos, el TV "apoya el dedo" donde está el punto y lo arrastra siguiendo la mano
-// (la posición la manda presenceStep). Soltar = cambiar de gesto o bajar la mano.
-const SLIDE = { on: false, since: 0, lostAt: 0 };
-function slideEnd() { SLIDE.on = false; SLIDE.since = 0; SLIDE.lostAt = 0; TVLINK.send({ t: "sup" }); log("✌️ Soltar"); }
-function slideStep(main, now) {
-  if (main.pose === "two") {
-    SLIDE.lostAt = 0;
-    if (!SLIDE.on) {
-      if (!SLIDE.since) SLIDE.since = now;
-      if (now - SLIDE.since >= 180) {   // 0,18 s de dos dedos firmes = agarrar
-        SLIDE.on = true; TVLINK.send({ t: "sdown" }); beep(1100, 30); navigator.vibrate?.(20); log("✌️ Deslizar"); clearHold();
-      }
-    }
-    lastActivity = now;
-    return true;
-  }
-  SLIDE.since = 0;
-  if (SLIDE.on) {
-    if (!SLIDE.lostAt) SLIDE.lostAt = now;
-    if (now - SLIDE.lostAt < 160) return true;   // un cuadro dudoso no suelta
-    slideEnd();
-  }
-  return false;
 }
 
 // ---- ESTÉREO: dos cámaras = profundidad real del dedo (como los dos ojos).
@@ -729,6 +704,81 @@ function cam2Send(res, now) {
   for (const lm of L) { const s = Math.hypot(lm[0].x - lm[9].x, lm[0].y - lm[9].y); if (s > bs) { bs = s; best = lm; } }
   const vh = video.videoHeight || 1;
   TVLINK.send({ t: "lm2", pts: best.map(p => [+fullX(p.x).toFixed(4), +((LASTC ? (LASTC.sy + p.y * LASTC.ch) / vh : p.y)).toFixed(4)]) });
+}
+
+// ---- ✌️ DOS DEDOS JUNTOS = "el dedo" de Co-Vi (definición de Rami, 8/11):
+//   · recién encendido (sin pantalla): quietos 1,5 s → CALIBRAR: ahí queda el centro de la pantalla invisible
+//     (lo toman las dos cámaras si está la cámara 2). Para mudarla: quietos 3 s.
+//   · moverlos → DESLIZAR (sdown … sup)
+//   · empujarlos hacia la tele (sin moverse) → CLIC donde está el punto
+// La V abierta NO cuenta: tienen que estar pegados (distancia entre puntas chica).
+const TWO = { since: 0, start: null, state: "idle", pushed: false, D: null, p: 0, lostAt: 0, still0: 0, calLatch: false };
+function twoTogether(main) {
+  if (main.pose !== "two") return false;
+  const gap = d2(main.lm[8], main.lm[12]), len = d2(main.lm[5], main.lm[8]) || 1;
+  return gap < len * 0.55;   // pegados (en la V abierta las puntas se separan más de medio dedo)
+}
+function twoDepth(main) {
+  const sq = stereoDepth(main);
+  if (sq !== null) return sq / S.pushStereo;
+  const d = palmPx(main); TWO.D = TWO.D === null ? d : TWO.D * 0.7 + d * 0.3;
+  return ANCHOR ? (TWO.D / ANCHOR.size - 1) / S.pushPct : 0;
+}
+function twoEnd() {
+  if (TWO.state === "slide") { TVLINK.send({ t: "sup" }); log("✌️ Soltar"); }
+  TWO.state = "idle"; TWO.since = 0; TWO.start = null; TWO.pushed = false; TWO.D = null; TWO.p = 0; TWO.lostAt = 0; TWO.still0 = 0; TWO.calLatch = false;
+}
+function calibrate(main, now) {
+  ANCHOR = { x: main.lm[8].x, y: main.lm[8].y, size: palmPx(main), d: stereoD(main) };
+  TOUCH.fx.reset(); TOUCH.fy.reset(); PRES.last = null; PRES.hist = []; PRES.cur = null; TWO.start = null; TWO.calLatch = true; TWO.D = null; STEREO.corr = 0; STEREO.prevD = null;
+  beep(1200, 60); navigator.vibrate?.(40); toast("✌️ Pantalla ubicada"); say("Pantalla lista");
+  log("✌️ Pantalla calibrada" + (ANCHOR.d !== null ? " con las dos cámaras 📷📷" : ""));
+  TVLINK.send({ t: "pos", x: 0.5, y: 0.5, p: 0 });
+  cooldownUntil = now + 600; lastActivity = now;
+}
+function twoStep(main, now) {
+  if (!twoTogether(main)) {
+    if (TWO.state === "slide" || TWO.since) {
+      if (!TWO.lostAt) TWO.lostAt = now;
+      if (now - TWO.lostAt < 160 && TWO.state === "slide") return true;   // un cuadro dudoso no suelta
+      twoEnd(); clearHold();
+    }
+    return false;
+  }
+  TWO.lostAt = 0; lastActivity = now;
+  if (!TWO.since) { TWO.since = now; TWO.start = PRES.cur; TWO.still0 = now; }
+  if (!TWO.start && PRES.cur) TWO.start = PRES.cur;
+  // 1) sin pantalla: quietos 1,5 s = calibrar (la ruedita también se ve en el centro del TV)
+  if (!ANCHOR) {
+    if (!isStill()) { clearHold(); return true; }
+    const done = holdFor("calib2", 1500, "Ubicando tu pantalla…", now);
+    if (!done && TVLINK.ok) TVLINK.send({ t: "pos", x: 0.5, y: 0.5, p: +Math.min(1, (now - hold.since) / 1500).toFixed(2), target: false });
+    if (done) { calibrate(main, now); TWO.since = 0; }
+    return true;
+  }
+  const cur = PRES.cur || TWO.start, st = TWO.start || cur;
+  const moved = cur && st ? Math.hypot(cur.x - st.x, cur.y - st.y) : 0;
+  TWO.p = twoDepth(main);
+  if (TWO.state === "slide") return true;                     // deslizando: la posición la manda presenceStep
+  // 2) empujar sin moverse = clic (y no repite hasta retirar la mano)
+  if (TWO.pushed && TWO.p < S.touchOut) TWO.pushed = false;
+  if (!TWO.pushed && TWO.p >= S.touchIn && moved < 0.05 && now - TWO.since > 150) {
+    const back = PRES.hist.find(h => h.t >= now - 160) || cur;   // dónde apuntaba antes de empujar
+    if (back) TVLINK.send({ t: "pos", x: +back.x.toFixed(4), y: +back.y.toFixed(4), p: 1 });
+    TVLINK.send({ t: "click" }); TWO.pushed = true;
+    beep(1300, 30); navigator.vibrate?.(20); log("✌️ Clic"); clearHold();
+    return true;
+  }
+  // 3) moverlos = deslizar
+  if (!TWO.pushed && moved > 0.04) {
+    TWO.state = "slide"; TVLINK.send({ t: "sdown" }); beep(1100, 30); log("✌️ Deslizar"); clearHold();
+    return true;
+  }
+  // 4) quietos 3 s = volver a ubicar la pantalla (si te cambiaste de lugar)
+  if (moved < 0.02 && !TWO.pushed && !TWO.calLatch && isStill()) {
+    if (now - TWO.still0 > 1000 && holdFor("recal", 2000, "Mudando tu pantalla…", now)) { calibrate(main, now); TWO.since = 0; }
+  } else { TWO.still0 = now; if (hold.key === "recal") clearHold(); }
+  return true;
 }
 
 // ---- calibración guiada (3 pasos, cada uno con la mano quieta 1,2 s) ----
@@ -889,7 +939,7 @@ function step(hands, now) {
 
   if (!hands.length && volGrab) endVolGrab();
   if (!hands.length && mode === "touch" && TOUCH.touching) { TOUCH.touching = false; TVLINK.send({ t: "tup" }); }
-  if (!hands.length && SLIDE.on) slideEnd();
+  if (!hands.length && (TWO.state === "slide" || TWO.since)) twoEnd();
   if (!hands.length) { clearHold(); trail = []; digitArmed = true; lastDigitKey = null; palmLatch = false; fistLatch = false; motPrev = null; volAcc = 0; swipeBuf = []; return; }
 
   const main = hands.reduce((a, b) => (b.size > a.size ? b : a)); // la mano más cercana
@@ -903,8 +953,8 @@ function step(hands, now) {
   const inCooldown = now < cooldownUntil;
 
   if (mode === "on") presenceStep(main, now);   // el punto se ve siempre mientras el control está encendido (cualquier gesto)
-  if (mode === "on" && slideStep(main, now)) return;   // ✌️ dos dedos juntos: deslizar la pantalla
-  if (mode !== "on" && SLIDE.on) slideEnd();
+  if (mode === "on" && twoStep(main, now)) return;   // ✌️ dos dedos juntos: calibrar · deslizar · clic
+  if (mode !== "on" && (TWO.state === "slide" || TWO.since)) twoEnd();
   // ---- palma quieta 2 s: activar / desactivar (desde cualquier modo)
   if (main.pose !== "open") palmLatch = false;
   if (main.pose !== "fist") fistLatch = false;
@@ -920,10 +970,10 @@ function step(hands, now) {
     }
     if (done) {
       if (mode === "off") {
-        ANCHOR = { x: main.lm[8].x, y: main.lm[8].y, size: palmPx(main), d: stereoD(main) };   // ← centro de tu pantalla invisible
-        if (ANCHOR.d !== null) log("📷📷 Estéreo: profundidad anclada");
+        ANCHOR = null;   // definición de Rami (8/11): la palma SOLO enciende; la pantalla se ubica siempre con ✌️ dos dedos juntos quietos
         setMode("on"); sendCommand("activate", TVLINK.ok ? "" : "Enlace gestual activado", "✋ Enlace gestual activado");   // con TV conectado, la voz la pone el TV
         TVLINK.send({ t: "linked" });   // el TV muestra la animación "Enlace gestual activado" (y oculta la ruedita)
+        setTimeout(() => { if (mode === "on" && !ANCHOR) { toast("✌️ Dos dedos juntos, quietos: ubicá tu pantalla"); say("Mostrá dos dedos juntos, quietos, para ubicar tu pantalla."); } }, 2600);
       }
       else { setMode("off"); sendCommand("deactivate", "Control apagado", "✋ Control apagado"); }
       cooldownUntil = now + 1500; palmLatch = true;
@@ -995,7 +1045,7 @@ function step(hands, now) {
         if (holdFor("point", 600, "Pantalla táctil", now)) {
           cooldownUntil = now + 400;
           const calOk = S.touchFrame !== "corners" ? !!ANCHOR : (S.cal && S.cal.zoom === S.zoom && S.cal.panX === S.panX && S.cal.panY === S.panY);
-          if (!calOk && S.touchFrame !== "corners") { say("Apagá y volvé a activar con la palma donde quieras tu pantalla."); }
+          if (!calOk && S.touchFrame !== "corners") { say("Primero ubicá tu pantalla: dos dedos juntos, quietos."); }
           else if (!calOk) { if (S.cal) say("Cambió el zoom o el encuadre, calibremos de nuevo."); startCalib(); }
           else { setMode("touch"); sendCommand("touch_on", "Pantalla táctil", "🖐️ Pantalla táctil"); }
         }
@@ -1003,7 +1053,7 @@ function step(hands, now) {
       return;
     }
     if (main.pose === "point") return;
-    if (main.pose === "two") return;   // (antes: modo flechas. Pedido de Rami: dos dedos = deslizar, ver slideStep)
+    if (main.pose === "two") return;   // (antes: modo flechas. Pedido de Rami: dos dedos = deslizar, ver twoStep)
     if (main.pose === "A") {
       if (holdFor("A", 600, "Modo apps", now)) { setMode("apps"); cooldownUntil = now + 900; digitArmed = false; sendCommand("mode_apps", "Modo apps. Elegí con los dedos", "🅰️ Modo apps"); }
       return;

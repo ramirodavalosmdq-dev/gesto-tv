@@ -14,6 +14,7 @@ async def main():
         # Pedido de Rami: ✌️ dos dedos juntos y mover la mano = deslizar la pantalla (sin flechas)
         await H('open', 0.1, 0.05); await pg.wait_for_timeout(2700)
         print("1) modo:", await pg.inner_text("#modeText"))
+        await hold('two', 1900, 0.1, 0.05); await pg.evaluate("window.__hand=null"); await pg.wait_for_timeout(500)   # ✌️ quietos = ubicar la pantalla
         await hold('open', 600, 0.1, 0.05)
         await hold('two', 500, 0.1, 0.05)            # agarrar en el centro
         for k in range(1, 9):                         # arrastrar hacia arriba de a poco
@@ -26,6 +27,6 @@ async def main():
         ia = next(k for k,g in enumerate(got) if g['t']=='sdown'); ib = next(k for k,g in enumerate(got) if g['t']=='sup')
         ys = [round(g['y'],2) for g in got[ia:ib] if g['t']=='pos']
         print("punto durante el arrastre (y):", ys[0], "→", ys[-1], f"({len(ys)} posiciones)")
-        assert [g['t'] for g in seq] == ['sdown','sup'] and ys[-1] < ys[0] - 0.2, "no deslizó"
+        assert [g["t"] for g in seq] == ["sdown","sup"] and ys[-1] < 0.3, "no deslizó"
         print("modo final:", await pg.inner_text("#modeText"), "| OK deslizar | errors:", errs); await b.close()
 asyncio.run(main())

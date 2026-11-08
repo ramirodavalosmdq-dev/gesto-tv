@@ -14,6 +14,7 @@ async def main():
         # Regla de Rami: con el control encendido, el punto se ve SIEMPRE y sigue a la mano (sin tener que hacer el índice)
         await H('open', 0.1, 0.05); await pg.wait_for_timeout(2700)
         print("1) modo:", await pg.inner_text("#modeText"))
+        await hold('two', 1900, 0.1, 0.05); await pg.evaluate("window.__hand=null"); await pg.wait_for_timeout(500)   # ✌️ quietos = ubicar la pantalla
         await hold('open', 700, 0.1, 0.05)          # mano donde activé → punto al centro
         await hold('open', 700, 0.1+0.08, 0.05)     # mano a tu izquierda → punto a la izquierda
         await hold('L', 700, 0.1, 0.05)             # otro gesto: el punto sigue

@@ -15,6 +15,7 @@ async def main():
         color = await pg.evaluate("document.getElementById('holdBar').style.stroke")
         await pg.wait_for_timeout(1300); print("1) modo:", await pg.inner_text("#modeText"), "| ruedita:", color)
         await pg.evaluate("window.__hand=null"); await pg.wait_for_timeout(1700)
+        await hold('two', 1900, 0.1, 0.05); await pg.evaluate("window.__hand=null"); await pg.wait_for_timeout(500)   # ✌️ quietos = ubicar la pantalla
         await hold('point', 1300, 0.1, 0.05); print("2) modo:", await pg.inner_text("#modeText"))
         await hold('point', 600, 0.1, 0.05)                 # en el centro elegido
         await hold('point', 600, 0.1+0.08, 0.05)            # mano a tu izquierda

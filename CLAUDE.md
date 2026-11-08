@@ -63,13 +63,20 @@ tv/src/main/assets/web/index.html  ──WSS:9443──▶  ServerService (servi
   empujar = `tdown`, retirar = `tup`. En el TV: toque corto = clic (accesibilidad, si no toque); apoyado y moviendo =
   trazo continuo (`continueStroke`); si no llega `TYPE_VIEW_SCROLLED`, convierte el arrastre en flechas.
   Alternativa: esquinas calibradas (3 pasos) y tocar con pinza.
-- ✌️ **Dos dedos juntos (índice + mayor) = DESLIZAR** (pedido de Rami 8/11: "no quiero flechas, quiero deslizar la
-  pantalla"): `sdown` → el punto arrastra → `sup` al cambiar de gesto. En el TV (`slideDown/slideMoved/slideUp`):
-  1° **dedo real** = `Injector.java` lanzado por KeyBridge (`app_process` con permiso de shell, inyecta MotionEvent de
-  pantalla táctil, técnica scrcpy) — el dedo se apoya recién al moverse 2% (si no, sería clic); 2° si en 0,6 s no hubo
-  `TYPE_VIEW_SCROLLED`: acciones de scroll de Accesibilidad sobre la lista bajo el punto; 3° flechas solo si no hay lista.
-  El registro anota qué método anduvo en cada app ("Deslizar en <paquete>: ..."). Test: `test_deslizar.py`.
-  (El modo flechas ✌️ quieto ya no se entra con la V; el código `dpad` queda.)
+- ✌️ **DOS DEDOS JUNTOS = "el dedo" de Co-Vi** (definición de Rami 8/11, foto: índice + mayor estirados y PEGADOS,
+  pulgar doblado sobre anular y meñique; la V abierta no cuenta → `twoTogether`, puntas a < 0,55 largo de dedo):
+  · **Palma 2 s SOLO enciende/apaga** (ya no fija la pantalla: `ANCHOR = null`). Sin pantalla calibrada no hay punto.
+  · Dos dedos **quietos 1,5 s** (sin pantalla) = **CALIBRAR** (`calibrate`: ANCHOR con posición, tamaño y disparidad
+    estéreo si está la cámara 2; ruedita verde en celular y TV). Quietos 3 s con pantalla = mudarla.
+  · Dos dedos **moviéndose** (> 4% de pantalla) = **DESLIZAR** (`sdown` … `sup`). En el TV (`slideDown/slideMoved/slideUp`):
+    1° **dedo real** = `Injector.java` lanzado por KeyBridge (`app_process` con permiso de shell, inyecta MotionEvent de
+    pantalla táctil, técnica scrcpy); 2° si en 0,6 s no hubo `TYPE_VIEW_SCROLLED`: scroll de Accesibilidad sobre la
+    lista bajo el punto; 3° flechas solo si no hay lista. Registro: "Deslizar en <paquete>: ...".
+  · Dos dedos **empujados** hacia la tele sin moverse = **CLIC** (`click` en la posición de antes del empujón).
+    Profundidad: estéreo (`stereoDepth/S.pushStereo`) si hay cámara 2; si no, tamaño de palma (poco confiable).
+  · El modo flechas ya no tiene gesto de entrada (Rami: "no quiero flechas"); queda el código `dpad`.
+  Tests: `test_dos_dedos.py` (palma → sin punto → calibrar → deslizar → clic), `test_deslizar.py`, `test_estereo.py`.
+  `test_puntero.py` está desactualizado (espera el mouse clásico por defecto; hoy el índice entra a táctil).
 - **Diagnóstico 8/11 (registro real)**: el arrastre por Accesibilidad (`dispatchGesture/continueStroke`) este TV lo
   CANCELA en milisegundos (12/12 intentos, 5 reintentos en <80 ms) → por eso nunca anduvo el arrastre. En 25 min de
   pruebas: 0 clics y solo 12 "empujar" detectados → la profundidad con 1 cámara no sirve para tocar.
@@ -83,11 +90,9 @@ puntero + clic con pinza; salir con puño ("perfecto"); modo flechas "funciona m
 se pasó a perilla); Atrás. **No anduvo**: el arrastre/scroll con pinza (falló casi siempre) y el aplauso (se sacó).
 **Sin probar todavía**: pantalla táctil (v0.1.12) y el ancla de la palma (v0.1.13).
 
-## En espera (Rami lo está pensando — NO tocar hasta que decida)
-- **Contradicción de la palma**: hoy palma 2 s con el control encendido = APAGA, pero el manual (pág. 5) dice que
-  repetir la palma "muda la pantalla". Propuesta hecha: palma 2 s = ruedita verde (activar o re-ubicar el ancla);
-  seguir 2 s más = ruedita roja = apagar ("Enlace gestual desactivado"). Alternativas: otro gesto para apagar, o
-  que la pantalla siga sola. Cuando decida: cambiar la página del celular + LinkView + el manual juntos.
+## Decidido (8/11) — antes "en espera"
+- La contradicción de la palma se resolvió con la definición de Rami: **palma = encender/apagar**, **dos dedos juntos
+  quietos = ubicar (o mudar) la pantalla**. FALTA actualizar el manual (págs. 5, 6 y 7) con esto.
 
 ## Manual del producto
 Manual de la caja "Co-Vi TV" (8 páginas A5, también exportado a PDF A4): artifact de Claude Design
