@@ -70,7 +70,22 @@ puntero + clic con pinza; salir con puño ("perfecto"); modo flechas "funciona m
 se pasó a perilla); Atrás. **No anduvo**: el arrastre/scroll con pinza (falló casi siempre) y el aplauso (se sacó).
 **Sin probar todavía**: pantalla táctil (v0.1.12) y el ancla de la palma (v0.1.13).
 
+## En espera (Rami lo está pensando — NO tocar hasta que decida)
+- **Contradicción de la palma**: hoy palma 2 s con el control encendido = APAGA, pero el manual (pág. 5) dice que
+  repetir la palma "muda la pantalla". Propuesta hecha: palma 2 s = ruedita verde (activar o re-ubicar el ancla);
+  seguir 2 s más = ruedita roja = apagar ("Enlace gestual desactivado"). Alternativas: otro gesto para apagar, o
+  que la pantalla siga sola. Cuando decida: cambiar la página del celular + LinkView + el manual juntos.
+
+## Manual del producto
+Manual de la caja "Co-Vi TV" (8 páginas A5, también exportado a PDF A4): artifact de Claude Design
+https://claude.ai/artifact/FKa7PjA6SN5GiMPky5Hd1t (privado de Rami). Texto al activar: "¡Listo! Enlace gestual
+activado." — Rami descartó "biometría" (Co-Vi no identifica personas; no prometer biometría).
+Ideas de producto charladas: la caja podría también hacerse pasar por mouse/control Bluetooth (HID) para andar en
+cualquier tele sin instalar app.
+
 ## Pendientes (en orden)
+0. Que Rami pruebe v0.1.15: animación HUD + voz femenina "Enlace gestual activado" (no vista en TV real todavía;
+   si la voz sale masculina o en otro idioma, ver la línea "Voz: …" del registro en la pantalla de la app).
 1. Que Rami pruebe la pantalla táctil + ancla; ajustar profundidad (`pushPct`), tamaño (`touchSize`), umbrales.
 2. Depurar el arrastre real en el TV **con logcat** (ver abajo): ¿`continueStroke` se cancela? ¿la app no acepta
    toques? ¿llega `TYPE_VIEW_SCROLLED`?
@@ -91,6 +106,9 @@ se pasó a perilla); Atrás. **No anduvo**: el arrastre/scroll con pinza (falló
 - La página del celular NO se publica aparte: viaja dentro del APK. Después de instalar, recargar en el celular.
 
 ## Ciclo rápido desde la notebook (Claude Code) — recomendado
+Ya instalado (8/11/2026) con `Instalar-CoVi-ClaudeCode.bat`: Git, GitHub CLI (logueado como ramirodavalosmdq-dev),
+adb (alias de winget) y Claude Code. Proyecto en `C:\Users\valen\Proyectos\gesto-tv`. Verificar `adb devices`
+la primera vez (no se confirmó si el TV aceptó "Permitir depuración").
 Requisitos en Windows: Git, GitHub CLI y adb (`winget install Git.Git GitHub.cli Google.PlatformTools`).
 ```
 adb connect 192.168.100.2:5555          # la 1.ª vez el TV pregunta "¿Permitir depuración?" → Permitir siempre
